@@ -492,19 +492,6 @@ body{
   color:var(--muted);
   font-size:15px;
 }
-.hero-badge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  margin-top:12px;
-  padding:8px 12px;
-  border-radius:999px;
-  font-size:12px;
-  font-weight:850;
-  border:1px solid rgba(66,227,200,.20);
-  color:var(--accent2);
-  background:rgba(66,227,200,.10);
-}
 .card{
   background:linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.045));
   border:1px solid var(--line);
@@ -1183,19 +1170,21 @@ summary:active{
 
 
 .profile-grid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
-.profile-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
-.meta-pill{padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.06)}
-.meta-pill .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
-.meta-pill .v{font-size:14px;font-weight:850;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.compact-sub{margin-top:8px;color:var(--muted);font-size:13px}
-.status-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:850;border:1px solid rgba(255,255,255,.11);background:rgba(0,0,0,.12)}
+.profile-head{display:flex;align-items:center;gap:12px;min-width:0}
+.profile-flag{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;font-size:34px;background:rgba(255,255,255,.07);border:1px solid var(--line);flex:0 0 auto}
+.profile-title{min-width:0}
+.profile-title .hero-title{font-size:36px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compact-sub{margin-top:6px;color:var(--muted);font-size:15px}
 .stats-card{margin-bottom:12px}
-.qr-quick{display:grid;grid-template-columns:100px 1fr auto;gap:12px;align-items:center}
+.qr-quick{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:12px;align-items:center}
+.qr-quick-copy{min-width:0}
+.qr-quick .muted{font-size:15px;line-height:1.3}
 .step-compact{padding:11px 12px}
 .step-compact b{font-size:15px;margin:0}
 .step-compact .muted{font-size:13px}
 .bottom-actions{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-@media (max-width:720px){.profile-grid{grid-template-columns:1fr}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.qr-quick{grid-template-columns:82px 1fr 54px}.bottom-actions{grid-template-columns:1fr}}
+.footer-note,.bottom-actions .copy-btn{border-radius:28px}
+@media (max-width:720px){.profile-grid{grid-template-columns:1fr}.profile-title .hero-title{font-size:30px}.qr-quick{grid-template-columns:82px minmax(0,1fr) 54px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
 
 </style>
 """
@@ -1383,19 +1372,16 @@ def render_profile(slug: str):
   <section class="hero">
     <h1>🇳🇱 VPN профиль готов</h1>
     <div class="subtitle">Скопируйте профиль и импортируйте в приложение.</div>
-    <div class="hero-badge">● Готово к подключению</div>
   </section>
 
   <section class="card">
     <div class="profile-grid">
-      <div>
-        <div class="hero-title">{esc(display_name)}</div>
-        <div class="profile-meta">
-          <div class="meta-pill"><div class="k">Статус</div><div class="v">{esc(st['text'])}</div></div>
-          <div class="meta-pill"><div class="k">Локация</div><div class="v">{esc(location)}</div></div>
-          <div class="meta-pill"><div class="k">Профиль</div><div class="v">Рекомендуемый</div></div>
+      <div class="profile-head">
+        <div class="profile-flag">🇳🇱</div>
+        <div class="profile-title">
+          <div class="hero-title">{esc(display_name)}</div>
+          <div class="compact-sub">{esc(location)}</div>
         </div>
-        <div class="compact-sub">Профиль уже настроен для корректной работы.</div>
       </div>
       <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
     </div>
@@ -1418,7 +1404,7 @@ def render_profile(slug: str):
 
   <section class="card qr-quick">
     <div class="qr-tile"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
-    <div>
+    <div class="qr-quick-copy">
       <div class="quick-title">QR-подключение</div>
       <div class="muted">Быстрый альтернативный импорт через камеру.</div>
     </div>
