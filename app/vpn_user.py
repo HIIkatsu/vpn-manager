@@ -671,7 +671,7 @@ body{
   border:1px solid var(--line);
   background:linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
 }
-.main-cta-wrap{margin-top:14px}
+.main-cta-wrap{margin-top:0}
 .section-title{
   color:rgba(255,255,255,.45);
   font-size:12px;
@@ -833,7 +833,7 @@ summary::-webkit-details-marker{
   justify-content:center;
   gap:10px;
   min-height:56px;
-  color:var(--accent2);
+  color:var(--text);
   font-weight:800;
 }
 .auth-card{
@@ -1169,22 +1169,24 @@ summary:active{
 }
 
 
-.profile-grid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+.profile-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
 .profile-head{display:flex;align-items:center;gap:12px;min-width:0}
 .profile-flag{width:60px;height:60px;border-radius:18px;display:grid;place-items:center;font-size:34px;background:rgba(255,255,255,.07);border:1px solid var(--line);flex:0 0 auto}
 .profile-title{min-width:0}
 .profile-title .hero-title{font-size:36px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compact-sub{margin-top:6px;color:var(--muted);font-size:15px}
 .stats-card{margin-bottom:12px}
-.qr-quick{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:12px;align-items:center}
-.qr-quick-copy{min-width:0}
+.badge{justify-self:end;width:max-content;max-width:max-content;white-space:nowrap;padding:8px 14px}
+.qr-quick{--qr-size:104px;display:grid;grid-template-columns:var(--qr-size) minmax(0,1fr) 54px;gap:12px;align-items:center}
+.qr-quick .qr-tile{width:var(--qr-size);height:var(--qr-size);box-sizing:border-box}
+.qr-quick-copy{min-width:0;overflow:hidden}
 .qr-quick .muted{font-size:15px;line-height:1.3}
 .step-compact{padding:11px 12px}
 .step-compact b{font-size:15px;margin:0}
 .step-compact .muted{font-size:13px}
 .bottom-actions{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
 .footer-note,.bottom-actions .copy-btn{border-radius:28px}
-@media (max-width:720px){.profile-grid{grid-template-columns:1fr}.profile-title .hero-title{font-size:30px}.qr-quick{grid-template-columns:82px minmax(0,1fr) 54px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
+@media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
 
 </style>
 """
@@ -1369,11 +1371,6 @@ def render_profile(slug: str):
 </head>
 <body>
 <div class="wrap">
-  <section class="hero">
-    <h1>🇳🇱 VPN профиль готов</h1>
-    <div class="subtitle">Скопируйте профиль и импортируйте в приложение.</div>
-  </section>
-
   <section class="card">
     <div class="profile-grid">
       <div class="profile-head">
@@ -1384,9 +1381,6 @@ def render_profile(slug: str):
         </div>
       </div>
       <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
-    </div>
-    <div class="main-cta-wrap">
-      <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="Профиль скопирован. Импортируйте в приложении." data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
     </div>
   </section>
 
@@ -1401,6 +1395,10 @@ def render_profile(slug: str):
       <div class="metric"><div class="k">Последний вход</div><div class="v">{esc(last_seen)}</div></div>
     </div>
   </section>
+
+  <div class="main-cta-wrap">
+    <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="Профиль скопирован. Импортируйте в приложении." data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
+  </div>
 
   <section class="card qr-quick">
     <div class="qr-tile"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
@@ -1457,7 +1455,7 @@ def render_profile(slug: str):
     <details><summary>Дополнительные варианты</summary><div class="details-inner"><ul class="mini-list"><li>Подписка .txt — альтернативный импорт.</li><li>Резерв 8443 — если основной вариант блокируется.</li><li>Raw VLESS — ручной крайний случай.</li></ul></div></details>
   </section>
 
-  <section class="card footer-note">🔒 Соединение защищено</section>
+  <section class="card footer-note" style="margin-top:10px;">🔒 Соединение защищено</section>
   <div class="bottom-actions"><a class="copy-btn" href="logout">Сменить профиль</a></div>
 </div>
 
