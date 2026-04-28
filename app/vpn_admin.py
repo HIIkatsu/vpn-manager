@@ -2561,27 +2561,7 @@ def admin_delete_user_local_no_apply(slug):
     except Exception:
         pass
 
-    try:
-        settings = load_settings()
-        subdir = Path(settings.get("subscription_dir", ""))
-        encoded_slug = quote(slug, safe="")
-
-        if subdir.exists():
-            for filename in (
-                f"{slug}.txt",
-                f"{slug}-443.txt",
-                f"{slug}-8443.txt",
-                f"{encoded_slug}.txt",
-                f"{encoded_slug}-443.txt",
-                f"{encoded_slug}-8443.txt",
-            ):
-                f = subdir / filename
-                if f.exists():
-                    f.unlink()
-    except Exception as e:
-        return True, f"{target.get('name', slug)} удалён, но файлы подписки частично не очищены: {e}", ""
-
-    return True, f"{target.get('name', slug)} удалён", ""
+    return True, f"{target.get('name', slug)} удалён (файлы подписки будут очищены после «Применить изменения»)", ""
 
 
 class Handler(BaseHTTPRequestHandler):

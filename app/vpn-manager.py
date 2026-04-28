@@ -121,6 +121,16 @@ def fallback_port(settings):
 
 
 def build_xray(settings, users_doc):
+    protect_private_ips = [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "169.254.0.0/16",
+        "::1/128",
+        "fc00::/7",
+        "fe80::/10",
+    ]
     return {
         "log": {"loglevel": settings.get("xray_loglevel", "warning")},
         "api": {"tag": "api", "services": ["StatsService"]},
@@ -138,6 +148,14 @@ def build_xray(settings, users_doc):
             "domainStrategy": "IPIfNonMatch",
             "rules": [
                 {"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
+                {"type": "field", "inboundTag": ["vless-reality"], "ip": protect_private_ips, "outboundTag": "block"},
+                {
+                    "type": "field",
+                    "inboundTag": ["vless-reality"],
+                    "ip": ["150.251.152.174"],
+                    "port": "22,10085,8010,8011",
+                    "outboundTag": "block",
+                },
                 {"type": "field", "protocol": ["bittorrent"], "outboundTag": "block"},
             ],
         },
@@ -348,55 +366,48 @@ def base_slug_from_sub_file(path: Path):
     return stem
 
 
-def write_subscriptions(settings, users_doc):
-    subdir = Path(settings["subscription_dir"])
-    subdir.mkdir(parents=True, exist_ok=True)
+def _render_subscription_files(settings, users_doc):
     routes = load(ROUTES)
-
     active = {u["slug"]: u for u in enabled_users(users_doc)}
-    all_slugs = {u["slug"] for u in users_list(users_doc)}
-
-    # Remove stale enabled files for disabled/deleted users. Backups already exist before apply.
-    for path in list(subdir.glob("*.txt")) + list(subdir.glob("*.json")):
-        base_slug = base_slug_from_sub_file(path)
-        # routing.json is global, not user-specific.
-        if path.name == "routing.json":
-            continue
-        if base_slug not in active:
-            path.unlink(missing_ok=True)
-
-    for path in list(subdir.glob("*.txt.disabled")) + list(subdir.glob("*.json.disabled")):
-        base_slug = base_slug_from_sub_file(Path(path.name.replace(".disabled", "")))
-        if base_slug not in all_slugs:
-            path.unlink(missing_ok=True)
-
     p_port = public_port(settings)
     f_port = fallback_port(settings)
-
-    # Global routing file for clients/admin diagnostics.
-    write_json(subdir / "routing.json", client_routing_object(routes))
+    files = {"routing.json": json.dumps(client_routing_object(routes), ensure_ascii=False, indent=2) + "\n"}
 
     for slug, user in active.items():
         main = vless_link(settings, user, p_port, user.get("title") or settings.get("profile_title"))
-        (subdir / f"{slug}.txt").write_text(main + "\n", encoding="utf-8")
-        os.chmod(subdir / f"{slug}.txt", 0o644)
-        write_json(subdir / f"{slug}.json", client_config_json(settings, routes, user, p_port))
+        files[f"{slug}.txt"] = main + "\n"
+        files[f"{slug}.json"] = json.dumps(client_config_json(settings, routes, user, p_port), ensure_ascii=False, indent=2) + "\n"
 
-        (subdir / f"{slug}-{p_port}.txt").write_text(
-            vless_link(settings, user, p_port, f"{settings.get('profile_title', 'VPN')} {p_port}") + "\n",
-            encoding="utf-8",
-        )
-        os.chmod(subdir / f"{slug}-{p_port}.txt", 0o644)
-        write_json(subdir / f"{slug}-{p_port}.json", client_config_json(settings, routes, user, p_port))
+        files[f"{slug}-{p_port}.txt"] = vless_link(settings, user, p_port, f"{settings.get('profile_title', 'VPN')} {p_port}") + "\n"
+        files[f"{slug}-{p_port}.json"] = json.dumps(client_config_json(settings, routes, user, p_port), ensure_ascii=False, indent=2) + "\n"
 
         if f_port != p_port:
-            (subdir / f"{slug}-{f_port}.txt").write_text(
-                vless_link(settings, user, f_port, f"{settings.get('profile_title', 'VPN')} fallback {f_port}") + "\n",
-                encoding="utf-8",
-            )
-            os.chmod(subdir / f"{slug}-{f_port}.txt", 0o644)
-            write_json(subdir / f"{slug}-{f_port}.json", client_config_json(settings, routes, user, f_port))
+            files[f"{slug}-{f_port}.txt"] = vless_link(
+                settings, user, f_port, f"{settings.get('profile_title', 'VPN')} fallback {f_port}"
+            ) + "\n"
+            files[f"{slug}-{f_port}.json"] = json.dumps(
+                client_config_json(settings, routes, user, f_port), ensure_ascii=False, indent=2
+            ) + "\n"
+    return files
 
+
+def write_subscriptions(settings, users_doc):
+    subdir = Path(settings["subscription_dir"])
+    subdir.mkdir(parents=True, exist_ok=True)
+    files = _render_subscription_files(settings, users_doc)
+    target_names = set(files.keys())
+    existing = [p for p in subdir.iterdir() if p.is_file()]
+
+    for path in existing:
+        if path.name.endswith(".disabled"):
+            continue
+        if path.suffix not in {".txt", ".json"}:
+            continue
+        if path.name not in target_names:
+            path.unlink(missing_ok=True)
+
+    for filename, content in files.items():
+        atomic_write_text(subdir / filename, content, mode=0o644)
     os.chmod(subdir, 0o755)
 
 def backup(settings):
