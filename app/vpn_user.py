@@ -450,693 +450,97 @@ STYLE = """
   color-scheme:dark;
   --bg:#060b14;
   --card:rgba(255,255,255,.07);
-  --card2:rgba(255,255,255,.05);
   --line:rgba(255,255,255,.11);
-  --line2:rgba(255,255,255,.16);
   --text:#eef3ff;
-  --muted:#99a4bd;
-  --accent:#5f8fff;
-  --accent2:#42e3c8;
+  --muted:#9aa7c2;
+  --accent:#6ea3ff;
+  --accent2:#43e4ca;
   --ok:#54e0aa;
   --bad:#ff7382;
-  --shadow:0 18px 60px rgba(0,0,0,.28);
+  --shadow:0 20px 60px rgba(0,0,0,.32);
 }
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{
   margin:0;
   font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   color:var(--text);
   background:
-    radial-gradient(circle at 18% 0%, rgba(88,132,255,.23), transparent 26rem),
-    radial-gradient(circle at 92% 8%, rgba(66,227,200,.12), transparent 28rem),
-    radial-gradient(circle at 50% 100%, rgba(255,255,255,.05), transparent 32rem),
+    radial-gradient(circle at 20% 0%, rgba(95,143,255,.24), transparent 24rem),
+    radial-gradient(circle at 95% 8%, rgba(67,228,202,.15), transparent 26rem),
     var(--bg);
 }
-.wrap{
-  max-width:860px;
-  margin:0 auto;
-  padding:16px 14px 28px;
-}
-.hero{
-  margin-bottom:14px;
-}
-.hero h1{
-  margin:0;
-  font-size:clamp(34px,8vw,58px);
-  letter-spacing:-.07em;
-  line-height:.95;
-}
-.subtitle{
-  margin-top:8px;
-  color:var(--muted);
-  font-size:15px;
-}
+.wrap{max-width:860px;margin:0 auto;padding:14px 14px 34px}
+.hero h1{margin:0;font-size:clamp(30px,8vw,52px);letter-spacing:-.06em;line-height:.95}
+.subtitle{margin-top:8px;color:var(--muted);font-size:15px}
 .card{
-  background:linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.045));
+  background:linear-gradient(145deg, rgba(255,255,255,.10), rgba(255,255,255,.045));
   border:1px solid var(--line);
-  border-radius:28px;
+  border-radius:24px;
   padding:16px;
   box-shadow:var(--shadow);
-  backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px);
-  margin-bottom:14px;
-}
-.status-card,.server-card{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:14px;
-}
-.server-left{
-  display:flex;
-  align-items:center;
-  gap:14px;
-  min-width:0;
-}
-.flag{
-  width:74px;
-  height:74px;
-  border-radius:22px;
-  display:grid;
-  place-items:center;
-  font-size:42px;
-  background:rgba(255,255,255,.07);
-  border:1px solid var(--line);
-  flex:0 0 auto;
-}
-.server-name{
-  font-size:28px;
-  line-height:1.05;
-  font-weight:950;
-  letter-spacing:-.04em;
-}
-.location{
-  margin-top:6px;
-  color:var(--muted);
-  font-size:15px;
-}
-.badge{
-  padding:10px 16px;
-  border-radius:999px;
-  font-size:13px;
-  font-weight:900;
-  white-space:nowrap;
-}
-.badge.ok{
-  color:var(--ok);
-  background:rgba(84,224,170,.13);
-  border:1px solid rgba(84,224,170,.18);
-}
-.badge.bad{
-  color:#ffd9df;
-  background:rgba(255,115,130,.14);
-  border:1px solid rgba(255,115,130,.2);
-}
-.traffic-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-end;
-  gap:12px;
-}
-.label{
-  color:var(--muted);
-  font-size:13px;
-  text-transform:uppercase;
-  letter-spacing:.08em;
-}
-.traffic-title{
-  margin-top:4px;
-  font-size:22px;
-  font-weight:900;
-  letter-spacing:-.03em;
-}
-.traffic-total{
-  font-size:30px;
-  font-weight:950;
-  letter-spacing:-.05em;
-  color:var(--accent2);
-}
-.progress{
-  margin:16px 0 12px;
-  height:16px;
-  border-radius:999px;
-  background:rgba(255,255,255,.09);
-  overflow:hidden;
-  border:1px solid rgba(255,255,255,.05);
-}
-.progress i{
-  display:block;
-  height:100%;
-  border-radius:999px;
-  background:linear-gradient(90deg, #5f8fff 0%, #4ab5ff 30%, #42e3c8 100%);
-  box-shadow:0 0 28px rgba(66,227,200,.25);
-}
-.traffic-meta{
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:10px;
-}
-.metric{
-  padding:12px;
-  border-radius:18px;
-  background:rgba(0,0,0,.18);
-  border:1px solid rgba(255,255,255,.06);
-}
-.metric .k{
-  color:var(--muted);
-  font-size:12px;
-  margin-bottom:4px;
-}
-.metric .v{
-  font-size:15px;
-  font-weight:850;
-}
-.quick-card{
-  display:grid;
-  grid-template-columns:auto 1fr auto;
-  gap:14px;
-  align-items:center;
-}
-.qr-tile{
-  width:92px;
-  height:92px;
-  padding:8px;
-  border-radius:20px;
-  background:rgba(255,255,255,.07);
-  border:1px solid rgba(66,227,200,.25);
-  display:grid;
-  place-items:center;
-  box-shadow:inset 0 0 0 1px rgba(66,227,200,.10);
-}
-.qr-tile img{
-  width:100%;
-  height:100%;
-  object-fit:contain;
-  border-radius:12px;
-  background:#fff;
-}
-.quick-title{
-  font-size:18px;
-  font-weight:900;
-  margin-bottom:6px;
-}
-.muted{
-  color:var(--muted);
-}
-.icon-btn{
-  border:none;
-  cursor:pointer;
-  width:72px;
-  height:72px;
-  border-radius:22px;
-  display:grid;
-  place-items:center;
-  text-decoration:none;
-  color:var(--text);
-  font-size:34px;
-  border:1px solid var(--line);
-  background:linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
-}
-.section-title{
-  color:rgba(255,255,255,.45);
-  font-size:12px;
-  letter-spacing:.10em;
-  text-transform:uppercase;
-  margin-bottom:12px;
-  font-weight:800;
-}
-.link-list{
-  display:grid;
-  gap:10px;
-}
-.link-row{
-  display:grid;
-  grid-template-columns:auto 1fr auto;
-  gap:12px;
-  align-items:center;
-  padding:14px;
-  border-radius:22px;
-  background:rgba(0,0,0,.16);
-  border:1px solid rgba(255,255,255,.06);
-}
-.link-icon{
-  width:54px;
-  height:54px;
-  border-radius:18px;
-  display:grid;
-  place-items:center;
-  background:rgba(255,255,255,.05);
-  border:1px solid rgba(255,255,255,.06);
-  font-size:24px;
-}
-.link-title{
-  font-size:18px;
-  font-weight:900;
-  letter-spacing:-.02em;
-}
-.link-preview{
-  margin-top:4px;
-  color:var(--muted);
-  font-size:14px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-  max-width:100%;
-}
-.btn,.copy-btn{
-  border:none;
-  outline:none;
-  text-decoration:none;
-  color:var(--text);
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:16px;
-  min-height:48px;
-  padding:0 18px;
-  font-size:16px;
-  font-weight:900;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  white-space:nowrap;
-}
-.copy-btn.primary{
-  background:linear-gradient(135deg, rgba(95,143,255,.30), rgba(95,143,255,.18));
-  border-color:rgba(95,143,255,.34);
-}
-.copy-btn.reserve{
-  background:linear-gradient(135deg, rgba(66,227,200,.22), rgba(66,227,200,.12));
-  border-color:rgba(66,227,200,.22);
-}
-.actions{
-  display:grid;
-  gap:10px;
-  margin-top:14px;
-}
-.big-btn{
-  width:100%;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  min-height:58px;
-  border-radius:18px;
-  text-decoration:none;
-  color:var(--text);
-  border:1px solid var(--line);
-  font-size:18px;
-  font-weight:950;
-  letter-spacing:-.02em;
-}
-.big-btn.primary{
-  background:linear-gradient(90deg, #5f8fff 0%, #42e3c8 100%);
-  color:#fff;
-  box-shadow:0 0 34px rgba(66,227,200,.16);
-}
-.big-btn.secondary{
-  background:rgba(255,255,255,.05);
-}
-details{
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
   margin-top:12px;
-  border-radius:20px;
-  border:1px solid rgba(255,255,255,.07);
-  background:rgba(0,0,0,.12);
-  overflow:hidden;
 }
-summary{
-  list-style:none;
-  cursor:pointer;
-  padding:16px;
-  font-size:17px;
-  font-weight:900;
-}
-summary::-webkit-details-marker{
-  display:none;
-}
-.details-inner{
-  padding:0 16px 16px;
-  color:var(--muted);
-}
-.steps{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
-}
-.step{
-  padding:16px;
-  border-radius:22px;
-  border:1px solid rgba(255,255,255,.06);
-  background:rgba(0,0,0,.14);
-}
-.step-num{
-  width:36px;
-  height:36px;
-  border-radius:999px;
-  display:grid;
-  place-items:center;
-  margin-bottom:10px;
-  font-weight:900;
-  background:rgba(95,143,255,.18);
-  color:#7eb0ff;
-}
-.step b{
-  display:block;
-  margin-bottom:6px;
-  font-size:19px;
-}
-.footer-note{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:10px;
-  min-height:56px;
-  color:var(--accent2);
-  font-weight:800;
-}
-.auth-card{
-  padding:18px;
-}
-.auth-title{
-  margin:0 0 6px;
-  font-size:clamp(34px,8vw,54px);
-  letter-spacing:-.06em;
-  line-height:.95;
-}
-.auth-sub{
-  color:var(--muted);
-  margin-bottom:16px;
-}
-.input{
-  width:100%;
-  min-height:56px;
-  border-radius:18px;
-  border:1px solid var(--line);
-  background:rgba(0,0,0,.22);
-  color:var(--text);
-  font-size:18px;
-  padding:0 16px;
-  outline:none;
-}
-.input:focus{
-  border-color:rgba(95,143,255,.5);
-}
-.auth-actions{
-  display:grid;
-  gap:10px;
-  margin-top:14px;
-}
-.error{
-  margin-bottom:12px;
-  padding:12px 14px;
-  border-radius:16px;
-  color:#ffd9df;
-  background:rgba(255,115,130,.14);
-  border:1px solid rgba(255,115,130,.22);
-}
-.toast{
-  position:fixed;
-  left:50%;
-  bottom:20px;
-  transform:translateX(-50%) translateY(20px);
-  opacity:0;
-  pointer-events:none;
-  background:rgba(10,16,27,.92);
-  color:#fff;
-  border:1px solid rgba(255,255,255,.10);
-  border-radius:16px;
-  padding:12px 16px;
-  font-weight:800;
-  transition:.2s ease;
-  z-index:99;
-}
-.toast.show{
-  transform:translateX(-50%) translateY(0);
-  opacity:1;
-}
+.trust-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}
+.chip{padding:7px 11px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08)}
+.chip.good{color:#b7ffe8;border-color:rgba(67,228,202,.4);background:rgba(67,228,202,.12)}
+.hero-main{display:grid;gap:12px;grid-template-columns:1fr 124px;align-items:start}
+.cta-title{font-size:24px;font-weight:900;letter-spacing:-.03em;margin:0 0 6px}
+.cta-sub{font-size:14px;color:var(--muted);margin:0 0 14px}
+.big-btn,.copy-btn,.btn{border:none;cursor:pointer;text-decoration:none;color:var(--text);font-weight:900;border-radius:16px;min-height:50px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px}
+.big-btn{width:100%;font-size:17px;letter-spacing:-.01em}
+.big-btn.primary{background:linear-gradient(90deg,#5f8fff 0%,#43e4ca 100%);color:#fff;box-shadow:0 0 30px rgba(67,228,202,.18)}
+.big-btn.secondary{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10)}
+.qr-card{padding:8px;border-radius:18px;background:rgba(255,255,255,.07);border:1px solid rgba(67,228,202,.26)}
+.qr-card img{display:block;width:100%;aspect-ratio:1/1;background:#fff;border-radius:12px}
+.qr-label{margin-top:8px;font-size:12px;color:var(--muted);text-align:center}
+.steps{display:grid;gap:10px;margin-top:14px}
+.step{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:12px;border-radius:16px;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.08)}
+.step-num{width:30px;height:30px;border-radius:999px;background:rgba(95,143,255,.2);display:grid;place-items:center;font-weight:900;color:#8cb8ff}
+.step b{display:block;margin:0 0 2px;font-size:15px}
+.muted{color:var(--muted)}
+.manual-copy-box{margin-top:10px;display:grid;gap:8px}
+.manual-copy-title{color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.manual-copy-text{width:100%;min-height:56px;max-height:120px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(0,0,0,.16);color:var(--text);padding:11px 13px;font:600 14px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical;outline:none}
+.section-title{color:rgba(255,255,255,.55);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.server-card{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.server-name{font-size:21px;font-weight:900}
+.location{font-size:14px;color:var(--muted);margin-top:4px}
+.badge{padding:8px 12px;border-radius:999px;font-size:12px;font-weight:900}
+.badge.ok{color:var(--ok);background:rgba(84,224,170,.12);border:1px solid rgba(84,224,170,.22)}
+.badge.bad{color:#ffd9df;background:rgba(255,115,130,.14);border:1px solid rgba(255,115,130,.22)}
+.traffic{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.metric{padding:12px;border-radius:14px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.06)}
+.metric .k{font-size:12px;color:var(--muted);margin-bottom:4px}
+.metric .v{font-size:14px;font-weight:850}
+details{margin-top:10px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.14);overflow:hidden}
+summary{list-style:none;cursor:pointer;padding:14px;font-weight:850;font-size:15px}
+summary::-webkit-details-marker{display:none}
+.details-inner{padding:0 14px 14px;color:var(--muted);font-size:14px}
+.actions{display:grid;gap:10px;margin-top:10px}
+.auth-card{padding:18px}
+.auth-title{margin:0 0 6px;font-size:clamp(34px,8vw,54px);letter-spacing:-.06em;line-height:.95}
+.auth-sub{color:var(--muted);margin-bottom:16px}
+.input{width:100%;min-height:56px;border-radius:18px;border:1px solid var(--line);background:rgba(0,0,0,.22);color:var(--text);font-size:18px;padding:0 16px;outline:none}
+.input:focus{border-color:rgba(95,143,255,.5)}
+.auth-actions{display:grid;gap:10px;margin-top:14px}
+.error{margin-bottom:12px;padding:12px 14px;border-radius:16px;color:#ffd9df;background:rgba(255,115,130,.14);border:1px solid rgba(255,115,130,.22)}
+.footer-note{display:flex;align-items:center;justify-content:center;min-height:52px;color:var(--accent2);font-weight:800}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:rgba(10,16,27,.92);color:#fff;border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px 16px;font-weight:800;transition:.2s ease;z-index:99}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.qr-modal{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(2,6,14,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.qr-modal.open{display:flex}
+.qr-modal-card{position:relative;width:min(410px,100%);border-radius:28px;padding:20px;background:linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.055));border:1px solid rgba(255,255,255,.14);box-shadow:0 28px 90px rgba(0,0,0,.46)}
+.qr-modal-close{position:absolute;right:14px;top:14px;width:40px;height:40px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:var(--text);font-size:24px;cursor:pointer}
+.qr-modal-title{padding-right:44px;font-size:24px;font-weight:900}
+.qr-modal-sub{margin-top:6px;color:var(--muted);font-size:14px}
+.qr-modal-box{margin:16px auto;width:min(290px,85vw);aspect-ratio:1/1;padding:14px;border-radius:22px;background:#fff}
+.qr-modal-box img{display:block;width:100%;height:100%;object-fit:contain}
 @media (max-width:720px){
-  .traffic-meta{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
-  .quick-card{
-    grid-template-columns:84px 1fr 56px;
-  }
-  .icon-btn{
-    width:56px;
-    height:56px;
-    border-radius:18px;
-    font-size:28px;
-  }
-  .link-row{
-    grid-template-columns:1fr;
-  }
-  .steps{
-    grid-template-columns:1fr;
-  }
-  .server-name{
-    font-size:24px;
-  }
-  .flag{
-    width:62px;
-    height:62px;
-    font-size:36px;
-  }
+  .hero-main{grid-template-columns:1fr}
+  .qr-card{max-width:124px}
 }
-
-.link-row.compact-link{
-  grid-template-columns:auto 1fr;
-}
-.qr-modal{
-  position:fixed;
-  inset:0;
-  z-index:120;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  padding:22px;
-  background:rgba(2,6,14,.72);
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
-}
-.qr-modal.open{
-  display:flex;
-}
-.qr-modal-card{
-  position:relative;
-  width:min(420px,100%);
-  border-radius:32px;
-  padding:22px;
-  background:
-    radial-gradient(circle at 20% 0%, rgba(95,143,255,.20), transparent 18rem),
-    linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.055));
-  border:1px solid rgba(255,255,255,.14);
-  box-shadow:0 28px 90px rgba(0,0,0,.46);
-}
-.qr-modal-close{
-  position:absolute;
-  right:16px;
-  top:16px;
-  width:42px;
-  height:42px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.08);
-  color:var(--text);
-  font-size:24px;
-  cursor:pointer;
-}
-.qr-modal-title{
-  padding-right:48px;
-  font-size:28px;
-  font-weight:950;
-  letter-spacing:-.04em;
-}
-.qr-modal-sub{
-  margin-top:6px;
-  color:var(--muted);
-  font-size:15px;
-}
-.qr-modal-box{
-  margin:20px auto 18px;
-  width:min(300px,88vw);
-  aspect-ratio:1/1;
-  padding:16px;
-  border-radius:28px;
-  background:#fff;
-  box-shadow:0 0 42px rgba(66,227,200,.16);
-}
-.qr-modal-box img{
-  display:block;
-  width:100%;
-  height:100%;
-  object-fit:contain;
-}
-
-
-/* Final mobile polish: no blue tap, fixed QR modal, compact link */
-*{
-  -webkit-tap-highlight-color: transparent !important;
-}
-button,
-a,
-summary,
-input{
-  -webkit-tap-highlight-color: transparent !important;
-  -webkit-touch-callout: none;
-}
-button{
-  appearance:none;
-  -webkit-appearance:none;
-}
-button:focus,
-button:active,
-a:focus,
-a:active,
-summary:focus,
-summary:active{
-  outline:none !important;
-  box-shadow:none;
-}
-.icon-btn{
-  border-radius:18px !important;
-  overflow:hidden;
-  user-select:none;
-  -webkit-user-select:none;
-  background-clip:padding-box;
-}
-.icon-btn:active,
-.big-btn:active,
-.copy-btn:active{
-  transform:scale(.97);
-  filter:brightness(1.08);
-}
-.card,
-.link-list,
-.link-row{
-  max-width:100%;
-  min-width:0;
-}
-.card{
-  overflow:hidden;
-}
-.link-row.compact-link{
-  width:100%;
-  max-width:100%;
-  min-width:0;
-  grid-template-columns:54px minmax(0,1fr) !important;
-  overflow:hidden;
-}
-.link-row.compact-link > div{
-  min-width:0;
-}
-.link-row.compact-link .link-preview{
-  display:block;
-  width:100%;
-  max-width:100%;
-  min-width:0;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.qr-modal{
-  position:fixed;
-  inset:0;
-  z-index:120;
-  display:none;
-  align-items:center;
-  justify-content:center;
-  padding:22px;
-  background:rgba(2,6,14,.72);
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
-}
-.qr-modal.open{
-  display:flex;
-}
-.qr-modal-card{
-  position:relative;
-  width:min(420px,100%);
-  border-radius:32px;
-  padding:22px;
-  background:
-    radial-gradient(circle at 20% 0%, rgba(95,143,255,.20), transparent 18rem),
-    linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.055));
-  border:1px solid rgba(255,255,255,.14);
-  box-shadow:0 28px 90px rgba(0,0,0,.46);
-}
-.qr-modal-close{
-  position:absolute;
-  right:16px;
-  top:16px;
-  width:42px;
-  height:42px;
-  border-radius:999px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.08);
-  color:var(--text);
-  font-size:24px;
-  cursor:pointer;
-}
-.qr-modal-title{
-  padding-right:48px;
-  font-size:28px;
-  font-weight:950;
-  letter-spacing:-.04em;
-}
-.qr-modal-sub{
-  margin-top:6px;
-  color:var(--muted);
-  font-size:15px;
-}
-.qr-modal-box{
-  margin:20px auto 18px;
-  width:min(300px,88vw);
-  aspect-ratio:1/1;
-  padding:16px;
-  border-radius:28px;
-  background:#fff;
-  box-shadow:0 0 42px rgba(66,227,200,.16);
-}
-.qr-modal-box img{
-  display:block;
-  width:100%;
-  height:100%;
-  object-fit:contain;
-}
-.manual-copy-box{
-  margin-top:16px;
-  display:grid;
-  gap:10px;
-}
-.manual-copy-title{
-  color:var(--muted);
-  font-size:13px;
-  font-weight:800;
-  text-transform:uppercase;
-  letter-spacing:.06em;
-}
-.manual-copy-text{
-  width:100%;
-  min-height:58px;
-  max-height:120px;
-  box-sizing:border-box;
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:18px;
-  background:rgba(0,0,0,.16);
-  color:var(--text);
-  padding:12px 14px;
-  font:600 14px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  resize:vertical;
-  outline:none;
-}
-@media (max-width:720px){
-  .link-row.compact-link{
-    grid-template-columns:54px minmax(0,1fr) !important;
-  }
-}
-
 </style>
 """
 
@@ -1276,7 +680,7 @@ def render_profile(slug: str):
     if not user or not user.get("enabled", True):
         return render_login("Профиль отключён или код недействителен.")
 
-    all_stats, max_total, stats_ok = all_user_stats()
+    all_stats, _, stats_ok = all_user_stats()
     info = all_stats.get(slug, {"up": 0, "down": 0, "total": 0, "connections": 0, "last": "—"})
 
     st = server_status()
@@ -1287,103 +691,52 @@ def render_profile(slug: str):
     fallback_link = f"{subscription_base(settings)}/{safe_slug}-8443.txt"
     fallback_json_link = f"{subscription_base(settings)}/{safe_slug}-8443.json"
     raw_link = raw_vless_from_file(settings, user)
-    reserve_raw_link = fallback_vless(settings, user)
 
     fallback_exists = (subscription_dir(settings) / f"{slug}-8443.txt").exists() or (subscription_dir(settings) / f"{slug}-8443.json").exists()
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
     fallback_json_exists = (subscription_dir(settings) / f"{slug}-8443.json").exists()
-    fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
 
     total = int(info["total"])
     down = int(info["down"])
     up = int(info["up"])
     connections = int(info["connections"])
     last_seen = str(info["last"] or "—")
-    percent = progress_percent(total, max_total)
 
     display_name = str(user.get("name", slug))
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
 
-    main_preview = mask_link(json_link if json_exists else subscription_link)
-    subscription_preview = mask_link(subscription_link)
-    fallback_preview = mask_link(fallback_json_link if (subscription_dir(settings) / f"{slug}-8443.json").exists() else fallback_link)
+    primary_profile_link = json_link if json_exists else subscription_link
+    fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
 
-    fallback_html = ""
-    if fallback_exists:
-        fallback_html = f"""
-        <div class="link-row">
-          <div class="link-icon">🛡️</div>
-          <div>
-            <div class="link-title">Резервный JSON 8443</div>
-            <div class="link-preview">{esc(fallback_preview)}</div>
-          </div>
-          <button
-            type="button"
-            class="copy-btn reserve"
-            data-copy="{esc(fallback_primary_link)}"
-            data-ok="Резервный профиль скопирован"
-            onclick="copyFrom(this)"
-          >Скопировать</button>
-        </div>
-        """
+    traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
+    down_text = human_bytes(down) if stats_ok else "stats unavailable"
+    up_text = human_bytes(up) if stats_ok else "stats unavailable"
 
-    reserve_block = ""
+    fallback_block = ""
     if fallback_exists:
-        reserve_block = f"""
-        <details>
-          <summary>Если не работает</summary>
-          <div class="details-inner">
-            Если основная ссылка не подключается, используйте резервный доступ.
-            <div class="actions">
-              <button
-                type="button"
-                class="copy-btn"
-                data-copy="{esc(fallback_primary_link)}"
-                data-ok="Резервный JSON/профиль скопирован"
-                onclick="copyFrom(this)"
-              >Скопировать резерв</button>
-              <button
-                type="button"
-                class="big-btn secondary"
-                data-copy="{esc(fallback_primary_link)}"
-                data-ok="Резервный JSON/профиль скопирован"
-                onclick="copyFrom(this)"
-              >Скопировать резерв</button>
-            </div>
-          </div>
-        </details>
-        """
-
-    fallback_section = ""
-    if fallback_exists:
-        fallback_section = f"""
+        fallback_block = f"""
     <details>
-      <summary>Резервный доступ 8443</summary>
+      <summary>Если не получилось: резервный доступ (8443)</summary>
       <div class="details-inner">
-        Используйте это только если основной профиль не подключается в вашей сети.
+        Используйте только если основной профиль не подключается в вашей сети.
         <div class="actions">
           <button
             type="button"
             class="big-btn secondary"
             data-copy="{esc(fallback_primary_link)}"
-            data-ok="Резервный профиль 8443 скопирован"
+            data-ok="Резервный профиль скопирован"
             data-target="fallbackProfileLink"
             onclick="copyFrom(this)"
-          >Скопировать резерв 8443</button>
+          >Скопировать резервный профиль</button>
         </div>
         <div class="manual-copy-box">
-          <div class="manual-copy-title">Резервная ссылка 8443</div>
+          <div class="manual-copy-title">Резервная ссылка</div>
           <textarea id="fallbackProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(fallback_primary_link)}</textarea>
         </div>
       </div>
     </details>
         """
-
-    traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
-    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Статистика недоступна"
-    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Статистика недоступна"
-    stats_note = "" if stats_ok else '<div class="muted" style="margin-top:8px">Статистика Xray временно недоступна.</div>'
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -1396,169 +749,148 @@ def render_profile(slug: str):
 <body>
 <div class="wrap">
   <section class="hero">
-    <h1>🇳🇱 VPN Profile</h1>
-    <div class="subtitle">Личная страница подключения</div>
-  </section>
-
-  <section class="card server-card">
-    <div class="server-left">
-      <div class="flag">🇳🇱</div>
-      <div>
-        <div class="server-name">{esc(display_name)}</div>
-        <div class="location">{esc(location)}</div>
-      </div>
-    </div>
-    <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
+    <h1>Подключение VPN</h1>
+    <div class="subtitle">Личный профиль для безопасного доступа. Основной путь: скопировать профиль → открыть VPN-приложение → импортировать.</div>
   </section>
 
   <section class="card">
-    <div class="traffic-head">
+    <div class="trust-row">
+      <span class="chip good">Рекомендуемый способ</span>
+      <span class="chip">Сохраняет маршрутизацию</span>
+      <span class="chip">Для iOS и Android</span>
+    </div>
+
+    <div class="hero-main">
       <div>
-        <div class="label">Статистика</div>
-        <div class="traffic-title">Расход трафика</div>
+        <h2 class="cta-title">Скопируйте JSON-профиль</h2>
+        <p class="cta-sub">JSON предпочтителен, потому что сохраняет правила маршрутизации (включая российские домены) и подключается стабильнее.</p>
+        <button
+          type="button"
+          class="big-btn primary"
+          data-copy="{esc(primary_profile_link)}"
+          data-ok="JSON-профиль скопирован. Откройте VPN-приложение и импортируйте из буфера."
+          data-target="jsonProfileLink"
+          onclick="copyFrom(this)"
+        >Скопировать JSON-профиль</button>
       </div>
-      <div class="traffic-total">{esc(traffic_total_text)}</div>
+      <div>
+        <div class="qr-card" onclick="showQrModal()" role="button" aria-label="Открыть QR">
+          <img src="qr?kind=json&amp;v={qr_v}" alt="QR JSON-профиля">
+        </div>
+        <div class="qr-label">QR содержит JSON-профиль</div>
+      </div>
     </div>
-    {stats_note}
 
-    <div class="progress"><i style="width:{percent}%"></i></div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div><b>Скопируйте профиль</b><span class="muted">Нажмите кнопку выше «Скопировать JSON-профиль».</span></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div><b>Откройте VPN-приложение</b><span class="muted">Любой клиент, где есть импорт из буфера обмена.</span></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div><b>Импортируйте профиль</b><span class="muted">Выберите «Import from Clipboard» / «Импорт из буфера» и включите подключение.</span></div>
+      </div>
+    </div>
 
-    <div class="traffic-meta">
-      <div class="metric">
-        <div class="k">Скачано</div>
-        <div class="v">{esc(down_text)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">Отправлено</div>
-        <div class="v">{esc(up_text)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">30 минут</div>
-        <div class="v">{connections} conn</div>
-      </div>
-      <div class="metric">
-        <div class="k">Последний вход</div>
-        <div class="v">{esc(last_seen)}</div>
-      </div>
+    <div class="manual-copy-box">
+      <div class="manual-copy-title">Ссылка JSON-профиля</div>
+      <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(primary_profile_link)}</textarea>
     </div>
-  </section>
-
-  <section class="card quick-card">
-    <div class="qr-tile">
-      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
-    </div>
-    <div>
-      <div class="quick-title">Быстрое подключение</div>
-      <div class="muted">QR содержит основной профиль</div>
-    </div>
-    <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
   </section>
 
   <section class="card">
-    <div class="section-title">Подключение</div>
-
-    <div class="step" style="margin-bottom:14px;">
-      <div class="step-num">1</div>
-      <b>Скопируйте основной профиль</b>
-      Это главный вариант: в нём уже есть маршрутизация — российские сайты идут напрямую, остальные через VPN.
-    </div>
-
-    <button
-      type="button"
-      class="big-btn primary"
-      data-copy="{esc(json_link if json_exists else subscription_link)}"
-      data-ok="Профиль скопирован. Теперь откройте VPN-приложение и импортируйте из буфера."
-      data-target="jsonProfileLink"
-      onclick="copyFrom(this)"
-    >⚡ Скопировать профиль</button>
-
-    <div class="manual-copy-box" style="margin-top:12px;">
-      <div class="manual-copy-title">Основная ссылка</div>
-      <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
-    </div>
-
-    <div class="step" style="margin-top:14px;">
-      <div class="step-num">2</div>
-      <b>Импортируйте в VPN-приложение</b>
-      Откройте приложение и выберите импорт из буфера / clipboard. Если приложение спросит тип профиля — выбирайте JSON/config.
-    </div>
-
+    <div class="section-title">Если не получилось</div>
     <details>
-      <summary>Если основная ссылка не импортируется</summary>
+      <summary>Проблема с импортом в приложении</summary>
       <div class="details-inner">
-        Сначала попробуйте подписку. Она тоже передаёт routing-правила. Raw VLESS используйте только в крайнем случае: на iPhone он может импортироваться без части настроек.
+        Сначала попробуйте подписку. Она тоже сохраняет маршрутизацию. Raw VLESS используйте только как запасной вариант.
         <div class="actions">
           <button
             type="button"
             class="big-btn secondary"
             data-copy="{esc(subscription_link)}"
-            data-ok="Подписка скопирована"
+            data-ok="Ссылка подписки скопирована"
             data-target="subscriptionProfileLink"
             onclick="copyFrom(this)"
           >Скопировать подписку</button>
-          <button
-            type="button"
-            class="big-btn secondary"
-            data-copy="{esc(raw_link)}"
-            data-ok="Raw VLESS скопирован. Используйте его только если JSON/подписка не импортируются."
-            data-target="rawProfileLink"
-            onclick="copyFrom(this)"
-          >Raw VLESS, крайний запасной вариант</button>
         </div>
         <div class="manual-copy-box">
-          <div class="manual-copy-title">Подписка</div>
+          <div class="manual-copy-title">Ссылка подписки</div>
           <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
-          <div class="manual-copy-title">Raw VLESS — только если ничего другое не работает</div>
-          <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
         </div>
       </div>
     </details>
 
-    {fallback_section}
+    {fallback_block}
+
+    <details>
+      <summary>Расширенные настройки (для опытных)</summary>
+      <div class="details-inner">
+        Здесь только технические запасные варианты.
+        <div class="actions">
+          <button
+            type="button"
+            class="big-btn secondary"
+            data-copy="{esc(raw_link)}"
+            data-ok="Raw VLESS скопирован"
+            data-target="rawProfileLink"
+            onclick="copyFrom(this)"
+          >Скопировать Raw VLESS</button>
+        </div>
+        <div class="manual-copy-box">
+          <div class="manual-copy-title">Raw VLESS (fallback)</div>
+          <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
+        </div>
+      </div>
+    </details>
+  </section>
+
+  <section class="card server-card">
+    <div>
+      <div class="server-name">{esc(display_name)}</div>
+      <div class="location">{esc(location)} · {esc(st['text'])}</div>
+    </div>
+    <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
   </section>
 
   <section class="card">
-    <div class="section-title">Что важно знать</div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">✓</div>
-        <b>Лучший вариант — JSON</b>
-        Он сохраняет Reality-настройки и правила маршрутизации для российских доменов.
-      </div>
-      <div class="step">
-        <div class="step-num">!</div>
-        <b>Raw VLESS — не основной</b>
-        На iPhone он иногда импортируется криво и может потерять часть настроек.
-      </div>
+    <div class="section-title">Статистика</div>
+    <div class="traffic" style="margin-top:10px;">
+      <div class="metric"><div class="k">Всего трафика</div><div class="v">{esc(traffic_total_text)}</div></div>
+      <div class="metric"><div class="k">Скачано / Отправлено</div><div class="v">↓ {esc(down_text)} · ↑ {esc(up_text)}</div></div>
+      <div class="metric"><div class="k">Подключений за 30 минут</div><div class="v">{connections}</div></div>
+      <div class="metric"><div class="k">Последняя активность</div><div class="v">{esc(last_seen)}</div></div>
     </div>
+    {'' if stats_ok else '<div class="muted" style="margin-top:10px">stats unavailable</div>'}
   </section>
 
-  <section class="card footer-note">
-    🔒 Ваше соединение защищено
-  </section>
+  <section class="card footer-note">🔒 Ваше соединение защищено</section>
 
   <div class="actions">
     <a class="big-btn secondary" href="logout">Выйти</a>
   </div>
 </div>
 
-
 <div class="qr-modal" id="qrModal" aria-hidden="true" onclick="if(event.target===this)hideQrModal()">
   <div class="qr-modal-card">
     <button class="qr-modal-close" type="button" onclick="hideQrModal()">×</button>
-    <div class="qr-modal-title">QR для подключения</div>
-    <div class="qr-modal-sub">QR содержит основной профиль для импорта.</div>
+    <div class="qr-modal-title">QR JSON-профиля</div>
+    <div class="qr-modal-sub">Отсканируйте этот QR в VPN-приложении. Он содержит ссылку на JSON-профиль.</div>
     <div class="qr-modal-box">
-      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
+      <img src="qr?kind=json&amp;v={qr_v}" alt="QR JSON-профиля">
     </div>
     <button
       type="button"
       class="big-btn primary"
-      data-copy="{esc(json_link if json_exists else subscription_link)}"
+      data-copy="{esc(primary_profile_link)}"
       data-ok="JSON-профиль скопирован"
       data-target="jsonProfileLink"
       onclick="copyFrom(this)"
-    >Скопировать профиль</button>
+    >Скопировать JSON-профиль</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
