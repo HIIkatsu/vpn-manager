@@ -327,7 +327,7 @@ def render_pending_modal_parts(pending, csrf):
         items += f'<li><span>{esc(labels.get(action, action))}</span><b>{esc(slug or "—")}</b></li>'
 
     trigger_html = """
-    <button class="primary pending-compact-btn" type="button" onclick="openPendingModal()">
+    <button class="pending-compact-btn" type="button" onclick="openPendingModal()">
       Есть несохранённые изменения
     </button>
     """
@@ -584,9 +584,14 @@ h1{
   background:rgba(255,255,255,.06) !important;
 }
 .pending-compact-btn{
+  width:100%;
   padding:10px 14px !important;
   border-radius:13px !important;
-  white-space:nowrap;
+  white-space:normal;
+  background:linear-gradient(135deg, rgba(255,209,102,.24), rgba(255,209,102,.10)) !important;
+  border-color:rgba(255,209,102,.42) !important;
+  color:#fff1c7 !important;
+  box-shadow:0 0 34px rgba(255,209,102,.10);
 }
 button,a.button-link{
   border:1px solid var(--line);
