@@ -1182,7 +1182,6 @@ summary:active{
 }
 
 
-.top-grid{display:grid;grid-template-columns:1.25fr .95fr;gap:12px;margin-bottom:12px}
 .profile-grid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
 .profile-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
 .meta-pill{padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.06)}
@@ -1196,7 +1195,7 @@ summary:active{
 .step-compact b{font-size:15px;margin:0}
 .step-compact .muted{font-size:13px}
 .bottom-actions{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-@media (max-width:720px){.top-grid{grid-template-columns:1fr}.profile-grid{grid-template-columns:1fr}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.qr-quick{grid-template-columns:82px 1fr 54px}.bottom-actions{grid-template-columns:1fr}}
+@media (max-width:720px){.profile-grid{grid-template-columns:1fr}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.qr-quick{grid-template-columns:82px 1fr 54px}.bottom-actions{grid-template-columns:1fr}}
 
 </style>
 """
@@ -1394,9 +1393,9 @@ def render_profile(slug: str):
         <div class="profile-meta">
           <div class="meta-pill"><div class="k">Статус</div><div class="v">{esc(st['text'])}</div></div>
           <div class="meta-pill"><div class="k">Локация</div><div class="v">{esc(location)}</div></div>
-          <div class="meta-pill"><div class="k">Профиль</div><div class="v">JSON (рекомендован)</div></div>
+          <div class="meta-pill"><div class="k">Профиль</div><div class="v">Рекомендуемый</div></div>
         </div>
-        <div class="compact-sub">Основной способ — JSON-профиль. Raw VLESS оставлен как запасной вариант.</div>
+        <div class="compact-sub">Профиль уже настроен для корректной работы.</div>
       </div>
       <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
     </div>
@@ -1406,7 +1405,7 @@ def render_profile(slug: str):
   </section>
 
   <section class="card stats-card">
-    <div class="traffic-head"><div><div class="label">Статистика</div><div class="traffic-title">Трафик и активность</div></div><div class="traffic-total">{esc(traffic_total_text)}</div></div>
+    <div class="traffic-head"><div><div class="label">Статистика</div><div class="traffic-title">Расход трафика</div></div><div class="traffic-total">{esc(traffic_total_text)}</div></div>
     {stats_note}
     <div class="progress"><i style="width:{percent}%"></i></div>
     <div class="traffic-meta">
@@ -1437,7 +1436,38 @@ def render_profile(slug: str):
   </section>
 
   <section class="card">
-    <details><summary>Если не получилось подключиться</summary><div class="details-inner"><div class="details-hint">Сначала подписка, затем резерв 8443. Raw VLESS — только как крайний вариант.</div><div class="actions"><button type="button" class="big-btn secondary" data-copy="{esc(subscription_link)}" data-ok="Подписка скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">Скопировать подписку</button>{"<button type='button' class='big-btn secondary' data-copy='" + esc(fallback_primary_link) + "' data-ok='Резервный профиль 8443 скопирован' data-target='fallbackProfileLink' onclick='copyFrom(this)'>Скопировать резерв 8443</button>" if fallback_exists else ""}<button type="button" class="big-btn secondary" data-copy="{esc(raw_link)}" data-ok="Raw VLESS скопирован. Используйте только если JSON/подписка не импортируются." data-target="rawProfileLink" onclick="copyFrom(this)">Скопировать Raw VLESS (крайний случай)</button></div><div class="manual-copy-box"><div class="manual-copy-title">Подписка</div><textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>{"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}<div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div><textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea></div></div></details>
+    <details>
+      <summary>Если не получилось подключиться</summary>
+      <div class="details-inner">
+        <div class="details-hint">Сначала подписка, затем резерв 8443. Raw VLESS — только как крайний вариант.</div>
+        <div class="actions">
+          <button
+            type="button"
+            class="big-btn secondary"
+            data-copy="{esc(subscription_link)}"
+            data-ok="Подписка скопирована"
+            data-target="subscriptionProfileLink"
+            onclick="copyFrom(this)"
+          >Скопировать подписку</button>
+          {"<button type='button' class='big-btn secondary' data-copy='" + esc(fallback_primary_link) + "' data-ok='Резервный профиль 8443 скопирован' data-target='fallbackProfileLink' onclick='copyFrom(this)'>Скопировать резерв 8443</button>" if fallback_exists else ""}
+          <button
+            type="button"
+            class="big-btn secondary"
+            data-copy="{esc(raw_link)}"
+            data-ok="Raw VLESS скопирован. Используйте только если JSON/подписка не импортируются."
+            data-target="rawProfileLink"
+            onclick="copyFrom(this)"
+          >Скопировать Raw VLESS (крайний случай)</button>
+        </div>
+        <div class="manual-copy-box">
+          <div class="manual-copy-title">Подписка</div>
+          <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
+          {"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}
+          <div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div>
+          <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
+        </div>
+      </div>
+    </details>
     <details><summary>Дополнительные варианты</summary><div class="details-inner"><ul class="mini-list"><li>Подписка .txt — альтернативный импорт.</li><li>Резерв 8443 — если основной вариант блокируется.</li><li>Raw VLESS — ручной крайний случай.</li></ul></div></details>
   </section>
 
