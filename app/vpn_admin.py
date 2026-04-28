@@ -4,9 +4,11 @@ import hashlib
 import hmac
 import html
 import json
+import os
 import re
 import secrets
 import subprocess
+import tempfile
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -18,6 +20,7 @@ SETTINGS = BASE / "settings.json"
 AUTH = BASE / "auth.json"
 ACCESS = BASE / "user_access.json"
 PENDING = BASE / "admin_pending_changes.json"
+LOGIN_RATE_LIMIT = BASE / "admin_login_rate_limit.json"
 
 HOST = "127.0.0.1"
 PORT = 8010
@@ -26,6 +29,8 @@ COOKIE_NAME = "vpn_admin_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 COOKIE_PATH = "/vpn-admin/"
 VERSION = "admin-old-ui-pending-v5-invite-copy-fix"
+LOGIN_WINDOW_SEC = 10 * 60
+LOGIN_MAX_ATTEMPTS = 8
 
 
 def load_json(path: Path):
@@ -33,7 +38,17 @@ def load_json(path: Path):
 
 
 def save_json(path: Path, data):
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    mode = 0o600 if path.name in {"auth.json", "user_access.json", "admin_login_rate_limit.json"} else 0o640
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=mode)
+
+
+def atomic_write_text(path: Path, text: str, mode=0o640):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=str(path.parent), encoding="utf-8") as f:
+        f.write(text)
+        tmp = Path(f.name)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
 
 
 def run(cmd, timeout=120):
@@ -135,6 +150,52 @@ def verify_token(token):
         return False
 
 
+def csrf_token(session_token):
+    if not session_token:
+        return ""
+    sig = hmac.new(auth_secret(), session_token.encode("utf-8"), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(sig).decode().rstrip("=")
+
+
+def load_rate_limit():
+    try:
+        data = json.loads(LOGIN_RATE_LIMIT.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def save_rate_limit(data):
+    atomic_write_text(LOGIN_RATE_LIMIT, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=0o600)
+
+
+def too_many_attempts(ip):
+    now_ts = int(time.time())
+    data = load_rate_limit()
+    attempts = [int(ts) for ts in data.get(ip, []) if now_ts - int(ts) <= LOGIN_WINDOW_SEC]
+    if len(attempts) >= LOGIN_MAX_ATTEMPTS:
+        return True
+    return False
+
+
+def remember_failed_attempt(ip):
+    now_ts = int(time.time())
+    data = load_rate_limit()
+    attempts = [int(ts) for ts in data.get(ip, []) if now_ts - int(ts) <= LOGIN_WINDOW_SEC]
+    attempts.append(now_ts)
+    data[ip] = attempts[-LOGIN_MAX_ATTEMPTS:]
+    save_rate_limit(data)
+
+
+def clear_attempts(ip):
+    data = load_rate_limit()
+    if ip in data:
+        data.pop(ip, None)
+        save_rate_limit(data)
+
+
 def load_access_codes():
     try:
         if ACCESS.exists():
@@ -212,7 +273,7 @@ def load_pending_changes():
 
 
 def save_pending_changes(data):
-    PENDING.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(PENDING, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=0o640)
 
 
 def mark_pending_change(action, slug=""):
@@ -377,17 +438,19 @@ def xray_stats():
     ]
 
     last_raw = ""
+    api_reachable = False
     for cmd in commands:
         code, out, err = run(cmd, timeout=15)
         raw = (out + "\n" + err).strip()
         last_raw = "$ " + " ".join(cmd) + "\n" + raw
 
         if code == 0:
+            api_reachable = True
             parsed = parse_xray_stats(raw)
             if parsed:
                 return parsed, True, last_raw
 
-    return {}, False, last_raw
+    return {}, api_reachable, last_raw
 
 
 def journal_activity(minutes=30):
@@ -1698,55 +1761,6 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 });
 
-/* FINAL_DELETE_FETCH_CAPTURE */
-document.addEventListener('click', async function(e){
-  const btn = e.target.closest('button.delete-btn');
-  if (!btn) return;
-
-  const form = btn.closest('form');
-  if (!form) return;
-
-  const action = form.getAttribute('action') || '';
-  if (!action.includes('delete-user')) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-
-  const data = new FormData(form);
-  const slug = (data.get('slug') || '').toString();
-
-  if (!slug) {
-    alert('Не найден slug пользователя');
-    return;
-  }
-
-  if (!confirm('Удалить профиль "' + slug + '" полностью?\n\nПользователь исчезнет из админки. Xray без перезапуска не трогаем.')) {
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = 'Удаляю...';
-
-  try {
-    const body = new URLSearchParams();
-    body.set('slug', slug);
-
-    await fetch('./delete-user', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: body.toString()
-    });
-
-    location.href = './?v=deleted-' + Date.now();
-  } catch(err) {
-    btn.disabled = false;
-    btn.textContent = 'Удалить';
-    alert('Не удалось удалить: ' + err);
-  }
-}, true);
-
 </script>
 """
 
@@ -1858,7 +1872,7 @@ def render_invite_page(user, invite_text, user_page_url, access_code):
 </html>"""
 
 
-def render(message="", log=""):
+def render(message="", log="", csrf=""):
     users = load_users()
     settings = load_settings()
     access_codes = ensure_access_codes(users)
@@ -1994,6 +2008,7 @@ def render(message="", log=""):
                 <a class="button-link qr-admin-btn" href="qr?slug={esc(encoded_slug)}&kind=vpn" target="_blank" rel="noopener" data-qr-slug="{esc(slug)}" data-qr-name="{esc(name)}">QR</a>
                 
 <form method="post" action="./delete-user">
+  <input type="hidden" name="csrf" value="{esc(csrf)}">
   <input type="hidden" name="slug" value="{esc(slug)}">
   <button
     class="danger delete-btn muted-red-action"
@@ -2004,10 +2019,12 @@ def render(message="", log=""):
   >Удалить</button>
 </form>
                 <form method="post" action="rotate-code">
+                    <input type="hidden" name="csrf" value="{esc(csrf)}">
                     <input type="hidden" name="slug" value="{esc(slug)}">
                     <button type="submit">Новый код</button>
                 </form>
                 <form method="post" action="toggle">
+                    <input type="hidden" name="csrf" value="{esc(csrf)}">
                     <input type="hidden" name="slug" value="{esc(slug)}">
                     <input type="hidden" name="action" value="{esc(action)}">
                     <button class="{btn_class}" type="submit">{label}</button>
@@ -2049,13 +2066,15 @@ def render(message="", log=""):
       </div>
       <div class="hero-actions">
         <form method="post" action="apply">
-          <button class="primary" type="submit">Применить конфиг</button>
+          <input type="hidden" name="csrf" value="{esc(csrf)}">
+          <button class="{apply_button_class}" type="submit">{esc(apply_label)}</button>
         </form>
         <a class="button-link" href="logout">Выйти</a>
       </div>
     </div>
   </header>
 
+  {pending_html}
   {message_html}
   {log_html}
 
@@ -2101,6 +2120,7 @@ def render(message="", log=""):
   <section class="panel">
     <div class="panel-title"><h2>Добавить пользователя</h2></div>
     <form class="form-row" method="post" action="add">
+      <input type="hidden" name="csrf" value="{esc(csrf)}">
       <input name="name" placeholder="Имя, например Ivan" required>
       <input name="slug" placeholder="slug, можно пустым">
       <button class="primary" type="submit">Создать локально</button>
@@ -2507,7 +2527,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Expires", "0")
 
         if extra_headers:
-            for k, v in extra_headers.items():
+            items = extra_headers.items() if hasattr(extra_headers, "items") else extra_headers
+            for k, v in items:
                 self.send_header(k, v)
 
         self.end_headers()
@@ -2537,27 +2558,49 @@ class Handler(BaseHTTPRequestHandler):
         self.send_html(render_login(), 401)
         return False
 
+    def current_session_token(self):
+        return self.get_cookie(COOKIE_NAME)
+
+    def current_csrf(self):
+        return csrf_token(self.current_session_token())
+
+    def verify_csrf_from_form(self, form_data):
+        sent = str(form_data.get("csrf", "")).strip()
+        expected = self.current_csrf()
+        return bool(sent and expected and hmac.compare_digest(sent, expected))
+
+    def real_client_ip(self):
+        x_real_ip = (self.headers.get("X-Real-IP", "") or "").strip()
+        if x_real_ip:
+            return x_real_ip
+        xff = (self.headers.get("X-Forwarded-For", "") or "").strip()
+        if xff:
+            first = xff.split(",", 1)[0].strip()
+            if first:
+                return first
+        return self.client_address[0] if self.client_address else "unknown"
+
     def do_HEAD(self):
         self.do_GET()
 
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-
-        if path == "/health":
-            self.send_json({"ok": True, "service": "vpn-admin", "version": VERSION})
+        public_get_routes = {"/health", "/logout"}
+        if path in public_get_routes:
+            if path == "/health":
+                self.send_json({"ok": True, "service": "vpn-admin", "version": VERSION})
+                return
+            self.redirect("./", [
+                ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"),
+                ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"),
+            ])
             return
 
-        if path == "/logout":
-            self.redirect("./", {
-                "Set-Cookie": f"{COOKIE_NAME}=deleted; Max-Age=0; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"
-            })
+        if not self.require_auth():
             return
 
         if path == "/invite":
-            if not self.require_auth():
-                return
-
             qs = parse_qs(parsed.query)
             slug = qs.get("slug", [""])[0]
             users = load_users()
@@ -2571,7 +2614,7 @@ class Handler(BaseHTTPRequestHandler):
                     break
 
             if not user:
-                self.send_html(render("Пользователь не найден."), 404)
+                self.send_html(render("Пользователь не найден.", csrf=self.current_csrf()), 404)
                 return
 
             name = str(user.get("name", slug))
@@ -2586,9 +2629,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/qr":
-            if not self.require_auth():
-                return
-
             qs = parse_qs(parsed.query)
             slug = qs.get("slug", [""])[0]
             kind = qs.get("kind", ["vpn"])[0]
@@ -2619,9 +2659,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/":
-            if not self.require_auth():
-                return
-            self.send_html(render())
+            self.send_html(render(csrf=self.current_csrf()))
             return
 
         self.redirect("./")
@@ -2634,17 +2672,29 @@ class Handler(BaseHTTPRequestHandler):
             f = self.form()
             username = f.get("username", "").strip()
             password = f.get("password", "")
+            client_ip = self.real_client_ip()
+
+            if too_many_attempts(client_ip):
+                self.send_html(render_login("Слишком много попыток входа. Подождите 10 минут."), 429)
+                return
 
             if check_password(username, password):
+                clear_attempts(client_ip)
                 token = make_token(username)
                 self.redirect("./", {
                     "Set-Cookie": f"{COOKIE_NAME}={token}; Max-Age={COOKIE_MAX_AGE}; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"
                 })
             else:
+                remember_failed_attempt(client_ip)
                 self.send_html(render_login("Неверный логин или пароль."), 401)
             return
 
         if not self.require_auth():
+            return
+
+        f = self.form()
+        if not self.verify_csrf_from_form(f):
+            self.send_html(render("CSRF validation failed. Обновите страницу и попробуйте снова.", csrf=self.current_csrf()), 403)
             return
 
         if path == "/apply":
@@ -2652,16 +2702,15 @@ class Handler(BaseHTTPRequestHandler):
             if code == 0:
                 clear_pending_changes()
             msg = "Конфиг применён" if code == 0 else "Ошибка применения"
-            self.send_html(render(msg, out + err))
+            self.send_html(render(msg, out + err, csrf=self.current_csrf()))
             return
 
         if path == "/add":
-            f = self.form()
             name = f.get("name", "").strip()
             slug = f.get("slug", "").strip()
 
             if not name:
-                self.send_html(render("Имя не указано"))
+                self.send_html(render("Имя не указано", csrf=self.current_csrf()))
                 return
 
             cmd = ["vpn-manager", "add-user", name]
@@ -2670,7 +2719,7 @@ class Handler(BaseHTTPRequestHandler):
 
             code1, out1, err1 = run(cmd, timeout=120)
             if code1 != 0:
-                self.send_html(render("Ошибка создания пользователя", out1 + err1))
+                self.send_html(render("Ошибка создания пользователя", out1 + err1, csrf=self.current_csrf()))
                 return
 
             actual_slug = slug
@@ -2687,17 +2736,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/toggle":
-            f = self.form()
             slug = f.get("slug", "").strip()
             action = f.get("action", "").strip()
 
             if action not in ("enable", "disable"):
-                self.send_html(render("Некорректное действие"))
+                self.send_html(render("Некорректное действие", csrf=self.current_csrf()))
                 return
 
             ok, msg, log = admin_set_user_enabled_local(slug, action == "enable")
             if not ok:
-                self.send_html(render(msg, log))
+                self.send_html(render(msg, log, csrf=self.current_csrf()))
                 return
 
             mark_pending_change(f"toggle:{action}", slug)
@@ -2706,11 +2754,10 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/rotate-code":
-            f = self.form()
             slug = f.get("slug", "").strip()
 
             if not slug:
-                self.send_html(render("Slug не указан"))
+                self.send_html(render("Slug не указан", csrf=self.current_csrf()))
                 return
 
             rotate_access_code(slug)
@@ -2718,14 +2765,13 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/delete-user":
-            f = self.form()
             slug = f.get("slug", "").strip()
             ok, msg, log = admin_delete_user_local_no_apply(slug)
             if ok:
                 mark_pending_change("delete", slug)
                 self.redirect(f"./?v=deleted-{int(time.time())}")
             else:
-                self.send_html(render(msg, log))
+                self.send_html(render(msg, log, csrf=self.current_csrf()))
             return
 
 

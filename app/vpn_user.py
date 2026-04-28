@@ -355,14 +355,16 @@ def xray_stats():
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user"],
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085"],
     ]
+    api_reachable = False
     for cmd in commands:
         code, out, err = run(cmd, timeout=15)
         raw = (out + "\n" + err).strip()
         if code == 0:
+            api_reachable = True
             parsed = parse_xray_stats(raw)
             if parsed:
-                return parsed
-    return {}
+                return parsed, True
+    return {}, api_reachable
 
 
 def journal_activity(minutes=30):
@@ -391,7 +393,7 @@ def journal_activity(minutes=30):
 
 def all_user_stats():
     users = load_users()
-    stats = xray_stats()
+    stats, stats_ok = xray_stats()
     activity = journal_activity(30)
 
     totals = {}
@@ -416,7 +418,7 @@ def all_user_stats():
     if max_total <= 0:
         max_total = TRAFFIC_SOFT_LIMIT
 
-    return totals, max_total
+    return totals, max_total, stats_ok
 
 
 def progress_percent(total: int, max_total: int):
@@ -1274,7 +1276,7 @@ def render_profile(slug: str):
     if not user or not user.get("enabled", True):
         return render_login("Профиль отключён или код недействителен.")
 
-    all_stats, max_total = all_user_stats()
+    all_stats, max_total, stats_ok = all_user_stats()
     info = all_stats.get(slug, {"up": 0, "down": 0, "total": 0, "connections": 0, "last": "—"})
 
     st = server_status()
@@ -1289,6 +1291,8 @@ def render_profile(slug: str):
 
     fallback_exists = (subscription_dir(settings) / f"{slug}-8443.txt").exists() or (subscription_dir(settings) / f"{slug}-8443.json").exists()
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
+    fallback_json_exists = (subscription_dir(settings) / f"{slug}-8443.json").exists()
+    fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1317,7 +1321,7 @@ def render_profile(slug: str):
           <button
             type="button"
             class="copy-btn reserve"
-            data-copy="{esc(fallback_json_link if (subscription_dir(settings) / f'{slug}-8443.json').exists() else fallback_link)}"
+            data-copy="{esc(fallback_primary_link)}"
             data-ok="Резервный профиль скопирован"
             onclick="copyFrom(this)"
           >Скопировать</button>
@@ -1335,14 +1339,14 @@ def render_profile(slug: str):
               <button
                 type="button"
                 class="copy-btn"
-                data-copy="{esc(fallback_json_link if (subscription_dir(settings) / f'{slug}-8443.json').exists() else fallback_link)}"
+                data-copy="{esc(fallback_primary_link)}"
                 data-ok="Резервный JSON/профиль скопирован"
                 onclick="copyFrom(this)"
               >Скопировать резерв</button>
               <button
                 type="button"
                 class="big-btn secondary"
-                data-copy="{esc(fallback_json_link if (subscription_dir(settings) / f'{slug}-8443.json').exists() else fallback_link)}"
+                data-copy="{esc(fallback_primary_link)}"
                 data-ok="Резервный JSON/профиль скопирован"
                 onclick="copyFrom(this)"
               >Скопировать резерв</button>
@@ -1350,6 +1354,36 @@ def render_profile(slug: str):
           </div>
         </details>
         """
+
+    fallback_section = ""
+    if fallback_exists:
+        fallback_section = f"""
+    <details>
+      <summary>Резервный доступ 8443</summary>
+      <div class="details-inner">
+        Используйте это только если основной профиль не подключается в вашей сети.
+        <div class="actions">
+          <button
+            type="button"
+            class="big-btn secondary"
+            data-copy="{esc(fallback_primary_link)}"
+            data-ok="Резервный профиль 8443 скопирован"
+            data-target="fallbackProfileLink"
+            onclick="copyFrom(this)"
+          >Скопировать резерв 8443</button>
+        </div>
+        <div class="manual-copy-box">
+          <div class="manual-copy-title">Резервная ссылка 8443</div>
+          <textarea id="fallbackProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(fallback_primary_link)}</textarea>
+        </div>
+      </div>
+    </details>
+        """
+
+    traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
+    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Статистика недоступна"
+    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Статистика недоступна"
+    stats_note = "" if stats_ok else '<div class="muted" style="margin-top:8px">Статистика Xray временно недоступна.</div>'
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -1383,19 +1417,20 @@ def render_profile(slug: str):
         <div class="label">Статистика</div>
         <div class="traffic-title">Расход трафика</div>
       </div>
-      <div class="traffic-total">{esc(human_bytes(total))}</div>
+      <div class="traffic-total">{esc(traffic_total_text)}</div>
     </div>
+    {stats_note}
 
     <div class="progress"><i style="width:{percent}%"></i></div>
 
     <div class="traffic-meta">
       <div class="metric">
         <div class="k">Скачано</div>
-        <div class="v">↓ {esc(human_bytes(down))}</div>
+        <div class="v">{esc(down_text)}</div>
       </div>
       <div class="metric">
         <div class="k">Отправлено</div>
-        <div class="v">↑ {esc(human_bytes(up))}</div>
+        <div class="v">{esc(up_text)}</div>
       </div>
       <div class="metric">
         <div class="k">30 минут</div>
@@ -1479,28 +1514,7 @@ def render_profile(slug: str):
       </div>
     </details>
 
-    {f"""
-    <details>
-      <summary>Резервный доступ 8443</summary>
-      <div class="details-inner">
-        Используйте это только если основной профиль не подключается в вашей сети.
-        <div class="actions">
-          <button
-            type="button"
-            class="big-btn secondary"
-            data-copy="{esc(fallback_json_link if (subscription_dir(settings) / f'{slug}-8443.json').exists() else fallback_link)}"
-            data-ok="Резервный профиль 8443 скопирован"
-            data-target="fallbackProfileLink"
-            onclick="copyFrom(this)"
-          >Скопировать резерв 8443</button>
-        </div>
-        <div class="manual-copy-box">
-          <div class="manual-copy-title">Резервная ссылка 8443</div>
-          <textarea id="fallbackProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(fallback_json_link if (subscription_dir(settings) / f'{slug}-8443.json').exists() else fallback_link)}</textarea>
-        </div>
-      </div>
-    </details>
-    """ if fallback_exists else ""}
+    {fallback_section}
   </section>
 
   <section class="card">

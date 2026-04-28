@@ -47,3 +47,17 @@ Expected result:
 - install commands
 - rollback commands
 - manual test checklist
+
+Operational note for rate limiting behind nginx:
+- Admin rate-limit logic uses real client IP from proxy headers.
+- nginx must pass:
+  - `proxy_set_header X-Real-IP $remote_addr;`
+  - `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+- In this repo these headers are already present in `nginx/sites-enabled/neurosmm`.
+
+Manual checklist additions:
+- unauth `GET /vpn-admin/invite?slug=me` must return login/401, not invite text
+- unauth `GET /vpn-admin/qr?slug=me` must require auth
+- authenticated `POST` without csrf must return 403
+- `rotate-code` must update code immediately and must not create Xray pending apply
+- new user with zero traffic should show `0 B` (not “stats unavailable”) when Xray stats API is reachable
