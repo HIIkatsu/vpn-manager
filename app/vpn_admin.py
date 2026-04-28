@@ -28,7 +28,7 @@ PORT = 8010
 COOKIE_NAME = "vpn_admin_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 COOKIE_PATH = "/vpn-admin/"
-VERSION = "admin-old-ui-pending-v5-invite-copy-fix"
+VERSION = "admin-old-ui-pending-modal-v6"
 LOGIN_WINDOW_SEC = 10 * 60
 LOGIN_MAX_ATTEMPTS = 8
 
@@ -307,17 +307,10 @@ def clear_pending_changes():
         save_pending_changes({"changes": []})
 
 
-def render_pending_box(pending):
+def render_pending_modal_parts(pending, csrf):
     changes = pending.get("changes", [])
     if not changes:
-        return """
-    <section class="pending-box clean">
-      <div>
-        <b>Конфиг синхронизирован</b>
-        <span>Нет локальных изменений, ожидающих применения.</span>
-      </div>
-    </section>
-        """
+        return "", ""
 
     labels = {
         "delete": "Удалён профиль",
@@ -328,24 +321,34 @@ def render_pending_box(pending):
     }
 
     items = ""
-    for item in changes[-4:]:
+    for item in reversed(changes):
         action = str(item.get("action", "change"))
         slug = str(item.get("slug", ""))
-        items += f'<span>{esc(labels.get(action, action))}: <b>{esc(slug or "—")}</b></span>'
+        items += f'<li><span>{esc(labels.get(action, action))}</span><b>{esc(slug or "—")}</b></li>'
 
-    more = ""
-    if len(changes) > 4:
-        more = f'<span>+ ещё {len(changes) - 4}</span>'
-
-    return f"""
-    <section class="pending-box dirty">
-      <div>
-        <b>Есть неприменённые изменения</b>
-        <span>Админка обновлена, но живой Xray ещё работает на старом конфиге. VPN у людей не дёргается, пока ты сам не нажмёшь «Применить изменения».</span>
-        <div class="pending-list">{items}{more}</div>
-      </div>
-    </section>
+    trigger_html = """
+    <button class="primary pending-compact-btn" type="button" onclick="openPendingModal()">
+      Есть несохранённые изменения
+    </button>
     """
+
+    modal_html = f"""
+<div class="modal" id="pendingModal" onclick="hidePendingModal(event)">
+  <div class="modal-card pending-modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <b>Неприменённые изменения</b>
+      <button type="button" onclick="closePendingModal()">Закрыть</button>
+    </div>
+    <p class="pending-modal-note">Админка уже обновлена, но живой Xray применит изменения только после нажатия кнопки ниже.</p>
+    <ul class="pending-modal-list">{items}</ul>
+    <form method="post" action="apply" class="pending-modal-form">
+      <input type="hidden" name="csrf" value="{esc(csrf)}">
+      <button class="primary pending-apply" type="submit">Применить изменения</button>
+    </form>
+  </div>
+</div>
+    """
+    return trigger_html, modal_html
 
 
 def public_user_path(settings):
@@ -563,6 +566,27 @@ h1{
   gap:8px;
   flex-wrap:wrap;
   justify-content:flex-end;
+}
+.hero-admin .hero-inner{
+  flex-wrap:wrap;
+}
+.hero-admin .hero-actions{
+  width:100%;
+  justify-content:flex-start;
+}
+.logout-mini{
+  margin-left:auto;
+  padding:7px 10px !important;
+  border-radius:11px !important;
+  font-size:12px;
+  font-weight:700;
+  color:var(--muted) !important;
+  background:rgba(255,255,255,.06) !important;
+}
+.pending-compact-btn{
+  padding:10px 14px !important;
+  border-radius:13px !important;
+  white-space:nowrap;
 }
 button,a.button-link{
   border:1px solid var(--line);
@@ -1005,6 +1029,10 @@ pre{
 @media(max-width:620px){
   .hero-inner{
     flex-direction:column;
+  }
+  .hero-admin .hero-inner{
+    flex-direction:row;
+    align-items:flex-start;
   }
   .share-actions{
     grid-template-columns:1fr;
@@ -1609,6 +1637,47 @@ html body .admin-actions-v5 form:last-child button.danger:hover {
   color:#fff1c7 !important;
   box-shadow:0 0 34px rgba(255,209,102,.10);
 }
+.pending-modal-card{
+  width:min(620px,100%);
+}
+.pending-modal-note{
+  margin:0 0 10px;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.4;
+}
+.pending-modal-list{
+  list-style:none;
+  margin:0 0 14px;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:42vh;
+  overflow:auto;
+}
+.pending-modal-list li{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  padding:8px 10px;
+  border-radius:12px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  font-size:13px;
+}
+.pending-modal-list li span{
+  color:rgba(255,255,255,.78);
+}
+.pending-modal-list li b{
+  color:#fff3cc;
+  text-align:right;
+  word-break:break-word;
+}
+.pending-modal-form{
+  display:flex;
+  justify-content:flex-end;
+}
 
 </style>
 """
@@ -1734,12 +1803,35 @@ window.hideQr = function(e){
   }
 };
 
+window.openPendingModal = function(){
+  const modal = document.getElementById('pendingModal');
+  if(!modal) return;
+  modal.classList.add('show');
+  modal.style.display = 'flex';
+};
+
+window.closePendingModal = function(){
+  const modal = document.getElementById('pendingModal');
+  if(!modal) return;
+  modal.classList.remove('show');
+  modal.style.display = 'none';
+};
+
+window.hidePendingModal = function(e){
+  if(!e || e.target.id === 'pendingModal'){
+    window.closePendingModal();
+  }
+};
+
 function confirmDelete(name){
   return confirm('Удалить профиль "' + name + '" полностью?\\n\\nБудет удалён пользователь, код входа, подписки и доступ в Xray.');
 }
 
 document.addEventListener('keydown', e => {
-  if(e.key === 'Escape') window.closeQr();
+  if(e.key === 'Escape'){
+    window.closeQr();
+    window.closePendingModal();
+  }
 });
 
 document.addEventListener('click', function(e){
@@ -1879,9 +1971,7 @@ def render(message="", log="", csrf=""):
     st = status()
     pending = load_pending_changes()
     pending_count = len(pending.get("changes", []))
-    pending_html = render_pending_box(pending)
-    apply_label = "Применить изменения" if pending_count else "Применить конфиг"
-    apply_button_class = "primary pending-apply" if pending_count else "primary"
+    pending_button_html, pending_modal_html = render_pending_modal_parts(pending, csrf)
 
     base_url = subscription_base(settings)
     user_page_url = public_user_url(settings)
@@ -2058,23 +2148,19 @@ def render(message="", log="", csrf=""):
 </head>
 <body>
 <div class="wrap">
-  <header class="hero">
+  <header class="hero hero-admin">
     <div class="hero-inner">
       <div>
         <h1>🇳🇱 VPN Admin</h1>
         <div class="subtitle">Пользователи, коды доступа, подписки и состояние сервера</div>
       </div>
+      <a class="button-link logout-mini" href="logout">Выйти</a>
       <div class="hero-actions">
-        <form method="post" action="apply">
-          <input type="hidden" name="csrf" value="{esc(csrf)}">
-          <button class="{apply_button_class}" type="submit">{esc(apply_label)}</button>
-        </form>
-        <a class="button-link" href="logout">Выйти</a>
+        {pending_button_html}
       </div>
     </div>
   </header>
 
-  {pending_html}
   {message_html}
   {log_html}
 
@@ -2154,6 +2240,8 @@ def render(message="", log="", csrf=""):
     <img id="qrImg" alt="QR">
   </div>
 </div>
+
+{pending_modal_html}
 
 <div class="toast" id="toast"></div>
 {JS}
