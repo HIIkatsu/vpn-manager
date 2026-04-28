@@ -319,7 +319,7 @@ def server_status():
     )
 
     if ok:
-        return {"text": "Сервер работает", "badge": "ONLINE", "class": "ok"}
+        return {"text": "Сервер работает", "badge": "Доступен", "class": "ok"}
     return {"text": "Есть проблема", "badge": "CHECK", "class": "bad"}
 
 
@@ -671,7 +671,7 @@ body{
   border:1px solid var(--line);
   background:linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
 }
-.main-cta-wrap{margin-top:0}
+.main-cta-wrap{margin-top:0;margin-bottom:10px}
 .section-title{
   color:rgba(255,255,255,.45);
   font-size:12px;
