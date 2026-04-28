@@ -484,7 +484,16 @@ def journal_activity(minutes=30):
 
 def badge(ok, text):
     cls = "ok" if ok else "bad"
-    return f'<span class="badge {cls}">{esc(text)}</span>'
+    text_map = {
+        "active": "Работает",
+        "online": "Доступен",
+        "enabled": "Доступен",
+        "off": "Отключен",
+        "closed": "Закрыт",
+        "listening": "Слушает",
+    }
+    label = text_map.get(str(text).strip().lower(), text)
+    return f'<span class="badge {cls}">{esc(label)}</span>'
 
 
 def qr_svg(text):
@@ -2159,8 +2168,8 @@ def render(message="", log="", csrf=""):
         <h1>🇳🇱 VPN Admin</h1>
         <div class="subtitle">Пользователи, коды доступа, подписки и состояние сервера</div>
       </div>
-      <a class="button-link logout-mini" href="logout">Выйти</a>
       <div class="hero-actions">
+        <a class="button-link logout-mini" href="logout">Выйти</a>
         {pending_button_html}
       </div>
     </div>
