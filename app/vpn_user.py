@@ -25,7 +25,7 @@ PORT = 8011
 
 COOKIE_NAME = "vpn_user_session"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
-VERSION = "vpn-user-old-ui-subjson-v5-user-friendly"
+VERSION = "vpn-user-ui-premium-compact-v6"
 
 TRAFFIC_SOFT_LIMIT = 1024 * 1024 * 1024  # 1 GB soft bar scale if user is alone
 
@@ -1181,6 +1181,23 @@ summary:active{
   }
 }
 
+
+.top-grid{display:grid;grid-template-columns:1.25fr .95fr;gap:12px;margin-bottom:12px}
+.profile-grid{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+.profile-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.meta-pill{padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.06)}
+.meta-pill .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+.meta-pill .v{font-size:14px;font-weight:850;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compact-sub{margin-top:8px;color:var(--muted);font-size:13px}
+.status-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:850;border:1px solid rgba(255,255,255,.11);background:rgba(0,0,0,.12)}
+.stats-card{margin-bottom:12px}
+.qr-quick{display:grid;grid-template-columns:100px 1fr auto;gap:12px;align-items:center}
+.step-compact{padding:11px 12px}
+.step-compact b{font-size:15px;margin:0}
+.step-compact .muted{font-size:13px}
+.bottom-actions{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+@media (max-width:720px){.top-grid{grid-template-columns:1fr}.profile-grid{grid-template-columns:1fr}.profile-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.qr-quick{grid-template-columns:82px 1fr 54px}.bottom-actions{grid-template-columns:1fr}}
+
 </style>
 """
 
@@ -1332,7 +1349,6 @@ def render_profile(slug: str):
     fallback_link = f"{subscription_base(settings)}/{safe_slug}-8443.txt"
     fallback_json_link = f"{subscription_base(settings)}/{safe_slug}-8443.json"
     raw_link = raw_vless_from_file(settings, user)
-    reserve_raw_link = fallback_vless(settings, user)
 
     fallback_exists = (subscription_dir(settings) / f"{slug}-8443.txt").exists() or (subscription_dir(settings) / f"{slug}-8443.json").exists()
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
@@ -1351,8 +1367,8 @@ def render_profile(slug: str):
     qr_v = int(time.time())
 
     traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
-    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Статистика недоступна"
-    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Статистика недоступна"
+    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Нет данных"
+    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Нет данных"
     stats_note = "" if stats_ok else '<div class="muted" style="margin-top:8px">Статистика Xray временно недоступна.</div>'
 
     return f"""<!doctype html>
@@ -1366,82 +1382,31 @@ def render_profile(slug: str):
 <body>
 <div class="wrap">
   <section class="hero">
-    <h1>VPN профиль готов</h1>
-    <div class="subtitle">Ниже уже всё подготовлено. Скопируйте профиль и импортируйте его в VPN-приложении.</div>
-    <div class="hero-badge">● Профиль готов к подключению</div>
+    <h1>🇳🇱 VPN профиль готов</h1>
+    <div class="subtitle">Скопируйте профиль и импортируйте в приложение.</div>
+    <div class="hero-badge">● Готово к подключению</div>
   </section>
 
-  <section class="card hero-card">
-    <div class="hero-card-head">
+  <section class="card">
+    <div class="profile-grid">
       <div>
         <div class="hero-title">{esc(display_name)}</div>
-        <div class="hero-sub">Сервер: {esc(location)}. Если кнопка ниже не сработала с первого раза, откройте раздел «Если не получилось подключиться».</div>
+        <div class="profile-meta">
+          <div class="meta-pill"><div class="k">Статус</div><div class="v">{esc(st['text'])}</div></div>
+          <div class="meta-pill"><div class="k">Локация</div><div class="v">{esc(location)}</div></div>
+          <div class="meta-pill"><div class="k">Профиль</div><div class="v">JSON (рекомендован)</div></div>
+        </div>
+        <div class="compact-sub">Основной способ — JSON-профиль. Raw VLESS оставлен как запасной вариант.</div>
       </div>
       <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
     </div>
-    <div class="hero-helper">Рекомендуемый способ: сохраняет маршрутизацию для российских доменов.</div>
     <div class="main-cta-wrap">
-      <button
-        type="button"
-        class="big-btn primary"
-        data-copy="{esc(json_link if json_exists else subscription_link)}"
-        data-ok="Профиль скопирован. Теперь откройте VPN-приложение и импортируйте из буфера."
-        data-target="jsonProfileLink"
-        onclick="copyFrom(this)"
-      >Скопировать профиль</button>
+      <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="Профиль скопирован. Импортируйте в приложении." data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
     </div>
   </section>
 
-  <section class="card quick-card">
-    <div class="qr-tile">
-      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
-    </div>
-    <div>
-      <div class="quick-title">Быстрое подключение</div>
-      <div class="muted">QR содержит профиль подключения</div>
-      <div class="tiny-note">Наведите камеру в VPN-приложении, если удобнее импорт через QR.</div>
-    </div>
-    <div class="actions">
-      <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="section-title">3 шага</div>
-    <div class="steps">
-      <div class="step step-line">
-        <div class="step-num">1</div>
-        <div class="step-text"><b>Скопируйте профиль</b>Нажмите кнопку выше «Скопировать профиль».</div>
-      </div>
-      <div class="step step-line">
-        <div class="step-num">2</div>
-        <div class="step-text"><b>Откройте VPN-приложение</b>Перейдите на экран импорта профиля.</div>
-      </div>
-      <div class="step step-line">
-        <div class="step-num">3</div>
-        <div class="step-text"><b>Импортируйте из буфера</b>Выберите import from clipboard / из буфера.</div>
-      </div>
-    </div>
-
-    <details style="margin-top:12px;">
-      <summary>Не скопировалось автоматически?</summary>
-      <div class="details-inner">
-        <div class="manual-copy-box">
-          <div class="manual-copy-title">Основная ссылка</div>
-          <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
-        </div>
-      </div>
-    </details>
-  </section>
-
-  <section class="card">
-    <div class="traffic-head">
-      <div>
-        <div class="label">Статистика</div>
-        <div class="traffic-title">Расход трафика</div>
-      </div>
-      <div class="traffic-total">{esc(traffic_total_text)}</div>
-    </div>
+  <section class="card stats-card">
+    <div class="traffic-head"><div><div class="label">Статистика</div><div class="traffic-title">Трафик и активность</div></div><div class="traffic-total">{esc(traffic_total_text)}</div></div>
     {stats_note}
     <div class="progress"><i style="width:{percent}%"></i></div>
     <div class="traffic-meta">
@@ -1452,79 +1417,41 @@ def render_profile(slug: str):
     </div>
   </section>
 
+  <section class="card qr-quick">
+    <div class="qr-tile"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
+    <div>
+      <div class="quick-title">QR-подключение</div>
+      <div class="muted">Быстрый альтернативный импорт через камеру.</div>
+    </div>
+    <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
+  </section>
+
   <section class="card">
-    <div class="section-title">Помощь</div>
-    <details>
-      <summary>Если не получилось подключиться</summary>
-      <div class="details-inner">
-        <div class="details-hint">Сначала попробуйте подписку. Если не помогло — резерв 8443. Raw VLESS используйте только как крайний вариант.</div>
-        <div class="actions">
-          <button
-            type="button"
-            class="big-btn secondary"
-            data-copy="{esc(subscription_link)}"
-            data-ok="Подписка скопирована"
-            data-target="subscriptionProfileLink"
-            onclick="copyFrom(this)"
-          >Скопировать подписку</button>
-          {"<button type='button' class='big-btn secondary' data-copy='" + esc(fallback_primary_link) + "' data-ok='Резервный профиль 8443 скопирован' data-target='fallbackProfileLink' onclick='copyFrom(this)'>Скопировать резерв 8443</button>" if fallback_exists else ""}
-          <button
-            type="button"
-            class="big-btn secondary"
-            data-copy="{esc(raw_link)}"
-            data-ok="Raw VLESS скопирован. Используйте его только если JSON/подписка не импортируются."
-            data-target="rawProfileLink"
-            onclick="copyFrom(this)"
-          >Скопировать Raw VLESS (крайний случай)</button>
-        </div>
-        <div class="manual-copy-box">
-          <div class="manual-copy-title">Подписка</div>
-          <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
-          {"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}
-          <div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div>
-          <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
-        </div>
-      </div>
-    </details>
-
-    <details>
-      <summary>Дополнительные варианты</summary>
-      <div class="details-inner">
-        <ul class="mini-list">
-          <li>Подписка .txt — альтернативный способ импорта.</li>
-          <li>Резерв 8443 — для сетей, где основной вариант блокируется.</li>
-          <li>Raw VLESS — только для ручного крайнего случая.</li>
-        </ul>
-      </div>
-    </details>
+    <div class="section-title">3 шага</div>
+    <div class="steps">
+      <div class="step step-line step-compact"><div class="step-num">1</div><div class="step-text"><b>Скопируйте профиль</b><div class="muted">Кнопка выше.</div></div></div>
+      <div class="step step-line step-compact"><div class="step-num">2</div><div class="step-text"><b>Откройте VPN-приложение</b><div class="muted">Экран импорта профиля.</div></div></div>
+      <div class="step step-line step-compact"><div class="step-num">3</div><div class="step-text"><b>Импорт из буфера</b><div class="muted">Вставьте и подключитесь.</div></div></div>
+    </div>
+    <details style="margin-top:12px;"><summary>Не скопировалось автоматически?</summary><div class="details-inner"><div class="manual-copy-box"><div class="manual-copy-title">Основная ссылка</div><textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea></div></div></details>
   </section>
 
-  <section class="card footer-note">
-    🔒 Ваше соединение защищено
+  <section class="card">
+    <details><summary>Если не получилось подключиться</summary><div class="details-inner"><div class="details-hint">Сначала подписка, затем резерв 8443. Raw VLESS — только как крайний вариант.</div><div class="actions"><button type="button" class="big-btn secondary" data-copy="{esc(subscription_link)}" data-ok="Подписка скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">Скопировать подписку</button>{"<button type='button' class='big-btn secondary' data-copy='" + esc(fallback_primary_link) + "' data-ok='Резервный профиль 8443 скопирован' data-target='fallbackProfileLink' onclick='copyFrom(this)'>Скопировать резерв 8443</button>" if fallback_exists else ""}<button type="button" class="big-btn secondary" data-copy="{esc(raw_link)}" data-ok="Raw VLESS скопирован. Используйте только если JSON/подписка не импортируются." data-target="rawProfileLink" onclick="copyFrom(this)">Скопировать Raw VLESS (крайний случай)</button></div><div class="manual-copy-box"><div class="manual-copy-title">Подписка</div><textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>{"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}<div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div><textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea></div></div></details>
+    <details><summary>Дополнительные варианты</summary><div class="details-inner"><ul class="mini-list"><li>Подписка .txt — альтернативный импорт.</li><li>Резерв 8443 — если основной вариант блокируется.</li><li>Raw VLESS — ручной крайний случай.</li></ul></div></details>
   </section>
 
-  <div class="actions">
-    <a class="copy-btn" href="logout">Сменить профиль</a>
-  </div>
+  <section class="card footer-note">🔒 Соединение защищено</section>
+  <div class="bottom-actions"><a class="copy-btn" href="logout">Сменить профиль</a></div>
 </div>
-
 
 <div class="qr-modal" id="qrModal" aria-hidden="true" onclick="if(event.target===this)hideQrModal()">
   <div class="qr-modal-card">
     <button class="qr-modal-close" type="button" onclick="hideQrModal()">×</button>
     <div class="qr-modal-title">QR для подключения</div>
     <div class="qr-modal-sub">QR содержит профиль подключения для импорта.</div>
-    <div class="qr-modal-box">
-      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
-    </div>
-    <button
-      type="button"
-      class="big-btn primary"
-      data-copy="{esc(json_link if json_exists else subscription_link)}"
-      data-ok="JSON-профиль скопирован"
-      data-target="jsonProfileLink"
-      onclick="copyFrom(this)"
-    >Скопировать профиль</button>
+    <div class="qr-modal-box"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
+    <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="JSON-профиль скопирован" data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
