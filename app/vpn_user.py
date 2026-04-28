@@ -1359,7 +1359,7 @@ def render_profile(slug: str):
     if fallback_exists:
         fallback_section = f"""
     <details>
-      <summary>Резервный доступ 8443</summary>
+      <summary>Резерв 8443 (если не получилось подключиться)</summary>
       <div class="details-inner">
         Используйте это только если основной профиль не подключается в вашей сети.
         <div class="actions">
@@ -1449,7 +1449,7 @@ def render_profile(slug: str):
     </div>
     <div>
       <div class="quick-title">Быстрое подключение</div>
-      <div class="muted">QR содержит основной профиль</div>
+      <div class="muted">QR содержит профиль подключения</div>
     </div>
     <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
   </section>
@@ -1459,8 +1459,8 @@ def render_profile(slug: str):
 
     <div class="step" style="margin-bottom:14px;">
       <div class="step-num">1</div>
-      <b>Скопируйте основной профиль</b>
-      Это главный вариант: в нём уже есть маршрутизация — российские сайты идут напрямую, остальные через VPN.
+      <b>Скопируйте профиль и импортируйте его в VPN-приложении.</b>
+      Рекомендуемый способ: сохраняет маршрутизацию для российских доменов.
     </div>
 
     <button
@@ -1470,7 +1470,7 @@ def render_profile(slug: str):
       data-ok="Профиль скопирован. Теперь откройте VPN-приложение и импортируйте из буфера."
       data-target="jsonProfileLink"
       onclick="copyFrom(this)"
-    >⚡ Скопировать профиль</button>
+    >Скопировать профиль</button>
 
     <div class="manual-copy-box" style="margin-top:12px;">
       <div class="manual-copy-title">Основная ссылка</div>
@@ -1484,9 +1484,9 @@ def render_profile(slug: str):
     </div>
 
     <details>
-      <summary>Если основная ссылка не импортируется</summary>
+      <summary>Если не получилось подключиться</summary>
       <div class="details-inner">
-        Сначала попробуйте подписку. Она тоже передаёт routing-правила. Raw VLESS используйте только в крайнем случае: на iPhone он может импортироваться без части настроек.
+        Короткий порядок: сначала подписка, затем резерв 8443, и только в крайнем случае Raw VLESS.
         <div class="actions">
           <button
             type="button"
@@ -1503,12 +1503,12 @@ def render_profile(slug: str):
             data-ok="Raw VLESS скопирован. Используйте его только если JSON/подписка не импортируются."
             data-target="rawProfileLink"
             onclick="copyFrom(this)"
-          >Raw VLESS, крайний запасной вариант</button>
+          >Скопировать Raw VLESS (крайний случай)</button>
         </div>
         <div class="manual-copy-box">
           <div class="manual-copy-title">Подписка</div>
           <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
-          <div class="manual-copy-title">Raw VLESS — только если ничего другое не работает</div>
+          <div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div>
           <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
         </div>
       </div>
@@ -1547,7 +1547,7 @@ def render_profile(slug: str):
   <div class="qr-modal-card">
     <button class="qr-modal-close" type="button" onclick="hideQrModal()">×</button>
     <div class="qr-modal-title">QR для подключения</div>
-    <div class="qr-modal-sub">QR содержит основной профиль для импорта.</div>
+    <div class="qr-modal-sub">QR содержит профиль подключения для импорта.</div>
     <div class="qr-modal-box">
       <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
     </div>
