@@ -131,6 +131,23 @@ def build_xray(settings, users_doc):
         "fc00::/7",
         "fe80::/10",
     ]
+    server_ip = str(settings.get("server_ip", "")).strip()
+    protect_rules = [
+        {"type": "field", "inboundTag": ["vless-reality"], "ip": protect_private_ips, "outboundTag": "block"},
+    ]
+    if server_ip:
+        protect_rules.append(
+            {
+                "type": "field",
+                "inboundTag": ["vless-reality"],
+                "ip": [server_ip],
+                "port": "22,10085,8010,8011",
+                "outboundTag": "block",
+            }
+        )
+    else:
+        print("WARNING: settings.server_ip is empty; skipping public-IP sensitive-ports block rule.", file=sys.stderr)
+
     return {
         "log": {"loglevel": settings.get("xray_loglevel", "warning")},
         "api": {"tag": "api", "services": ["StatsService"]},
@@ -148,14 +165,7 @@ def build_xray(settings, users_doc):
             "domainStrategy": "IPIfNonMatch",
             "rules": [
                 {"type": "field", "inboundTag": ["api"], "outboundTag": "api"},
-                {"type": "field", "inboundTag": ["vless-reality"], "ip": protect_private_ips, "outboundTag": "block"},
-                {
-                    "type": "field",
-                    "inboundTag": ["vless-reality"],
-                    "ip": ["150.251.152.174"],
-                    "port": "22,10085,8010,8011",
-                    "outboundTag": "block",
-                },
+                *protect_rules,
                 {"type": "field", "protocol": ["bittorrent"], "outboundTag": "block"},
             ],
         },
