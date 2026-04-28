@@ -448,18 +448,18 @@ STYLE = """
 <style>
 :root{
   color-scheme:dark;
-  --bg:#060b14;
-  --card:rgba(255,255,255,.07);
+  --bg:#050a14;
+  --bg-soft:#0b1220;
+  --card:rgba(255,255,255,.08);
   --card2:rgba(255,255,255,.05);
-  --line:rgba(255,255,255,.11);
-  --line2:rgba(255,255,255,.16);
+  --line:rgba(255,255,255,.10);
   --text:#eef3ff;
-  --muted:#99a4bd;
+  --muted:#a4b0c9;
   --accent:#5f8fff;
   --accent2:#42e3c8;
   --ok:#54e0aa;
   --bad:#ff7382;
-  --shadow:0 18px 60px rgba(0,0,0,.28);
+  --shadow:0 22px 70px rgba(0,0,0,.30);
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -474,23 +474,36 @@ body{
     var(--bg);
 }
 .wrap{
-  max-width:860px;
+  max-width:900px;
   margin:0 auto;
-  padding:16px 14px 28px;
+  padding:16px 14px 32px;
 }
 .hero{
-  margin-bottom:14px;
+  margin-bottom:12px;
 }
 .hero h1{
   margin:0;
-  font-size:clamp(34px,8vw,58px);
+  font-size:clamp(32px,8vw,54px);
   letter-spacing:-.07em;
-  line-height:.95;
+  line-height:.98;
 }
 .subtitle{
-  margin-top:8px;
+  margin-top:7px;
   color:var(--muted);
   font-size:15px;
+}
+.hero-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:12px;
+  padding:8px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:850;
+  border:1px solid rgba(66,227,200,.20);
+  color:var(--accent2);
+  background:rgba(66,227,200,.10);
 }
 .card{
   background:linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.045));
@@ -502,12 +515,21 @@ body{
   -webkit-backdrop-filter:blur(20px);
   margin-bottom:14px;
 }
-.status-card,.server-card{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:14px;
+.hero-card{padding:18px}
+.hero-card-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
 }
+.hero-title{font-size:26px;font-weight:940;letter-spacing:-.03em;line-height:1.05}
+.hero-sub{margin-top:8px;color:var(--muted);font-size:14px;max-width:48ch}
+.hero-helper{
+  margin-top:12px;
+  padding:12px 14px;
+  border-radius:16px;
+  font-size:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.14);
+}
+.status-card,.server-card{display:flex;justify-content:space-between;align-items:center;gap:14px}
 .server-left{
   display:flex;
   align-items:center;
@@ -613,14 +635,13 @@ body{
   font-weight:850;
 }
 .quick-card{
-  display:grid;
-  grid-template-columns:auto 1fr auto;
+  display:grid;grid-template-columns:auto 1fr;
   gap:14px;
   align-items:center;
 }
 .qr-tile{
-  width:92px;
-  height:92px;
+  width:104px;
+  height:104px;
   padding:8px;
   border-radius:20px;
   background:rgba(255,255,255,.07);
@@ -637,12 +658,17 @@ body{
   background:#fff;
 }
 .quick-title{
-  font-size:18px;
+  font-size:20px;
   font-weight:900;
-  margin-bottom:6px;
+  margin-bottom:4px;
 }
 .muted{
   color:var(--muted);
+}
+.tiny-note{
+  margin-top:10px;
+  color:var(--muted);
+  font-size:13px;
 }
 .icon-btn{
   border:none;
@@ -658,6 +684,7 @@ body{
   border:1px solid var(--line);
   background:linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
 }
+.main-cta-wrap{margin-top:14px}
 .section-title{
   color:rgba(255,255,255,.45);
   font-size:12px;
@@ -733,7 +760,7 @@ body{
 .actions{
   display:grid;
   gap:10px;
-  margin-top:14px;
+  margin-top:12px;
 }
 .big-btn{
   width:100%;
@@ -780,14 +807,15 @@ summary::-webkit-details-marker{
   padding:0 16px 16px;
   color:var(--muted);
 }
+.details-hint{font-size:13px;color:var(--muted);margin-top:6px}
+.mini-list{margin:10px 0 0;padding-left:18px;color:var(--muted)}
+.mini-list li{margin:4px 0}
 .steps{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:12px;
+  display:grid;gap:10px;
 }
 .step{
-  padding:16px;
-  border-radius:22px;
+  padding:14px;
+  border-radius:18px;
   border:1px solid rgba(255,255,255,.06);
   background:rgba(0,0,0,.14);
 }
@@ -805,8 +833,13 @@ summary::-webkit-details-marker{
 .step b{
   display:block;
   margin-bottom:6px;
-  font-size:19px;
+  font-size:17px;
 }
+.step-line{
+  display:flex;gap:10px;align-items:flex-start;
+}
+.step-line .step-num{margin:0;flex:0 0 auto}
+.step-line .step-text{padding-top:4px}
 .footer-note{
   display:flex;
   align-items:center;
@@ -828,6 +861,11 @@ summary::-webkit-details-marker{
 .auth-sub{
   color:var(--muted);
   margin-bottom:16px;
+}
+.auth-helper{
+  margin-top:10px;
+  font-size:13px;
+  color:var(--muted);
 }
 .input{
   width:100%;
@@ -881,7 +919,7 @@ summary::-webkit-details-marker{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
   .quick-card{
-    grid-template-columns:84px 1fr 56px;
+    grid-template-columns:84px 1fr;
   }
   .icon-btn{
     width:56px;
@@ -1135,6 +1173,12 @@ summary:active{
   .link-row.compact-link{
     grid-template-columns:54px minmax(0,1fr) !important;
   }
+  .hero-title{
+    font-size:22px;
+  }
+  .big-btn{
+    min-height:54px;
+  }
 }
 
 </style>
@@ -1247,13 +1291,13 @@ def render_login(error=""):
 <body>
 <div class="wrap">
   <section class="hero">
-    <h1>🇳🇱 VPN Access</h1>
-    <div class="subtitle">Одна страница для подключения. Введите личный код доступа.</div>
+    <h1>VPN доступ</h1>
+    <div class="subtitle">Введите личный код, чтобы открыть ваш готовый профиль подключения.</div>
   </section>
 
   <section class="card auth-card">
-    <h2 class="auth-title">Вход</h2>
-    <div class="auth-sub">Введите код, который выдал администратор.</div>
+    <h2 class="auth-title">Вход по коду</h2>
+    <div class="auth-sub">Код выдаёт администратор. После входа вы сразу увидите кнопку «Скопировать профиль».</div>
     {error_html}
     <form method="post" action="login">
       <input class="input" name="code" placeholder="Введите код доступа" autocomplete="off" required>
@@ -1261,6 +1305,7 @@ def render_login(error=""):
         <button class="copy-btn primary" type="submit">Открыть профиль</button>
       </div>
     </form>
+    <div class="auth-helper">Если код не принимается — проверьте раскладку и лишние пробелы.</div>
   </section>
 </div>
 <div class="toast" id="toast"></div>
@@ -1305,79 +1350,13 @@ def render_profile(slug: str):
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
 
-    main_preview = mask_link(json_link if json_exists else subscription_link)
-    subscription_preview = mask_link(subscription_link)
-    fallback_preview = mask_link(fallback_json_link if (subscription_dir(settings) / f"{slug}-8443.json").exists() else fallback_link)
-
-    fallback_html = ""
-    if fallback_exists:
-        fallback_html = f"""
-        <div class="link-row">
-          <div class="link-icon">🛡️</div>
-          <div>
-            <div class="link-title">Резервный JSON 8443</div>
-            <div class="link-preview">{esc(fallback_preview)}</div>
-          </div>
-          <button
-            type="button"
-            class="copy-btn reserve"
-            data-copy="{esc(fallback_primary_link)}"
-            data-ok="Резервный профиль скопирован"
-            onclick="copyFrom(this)"
-          >Скопировать</button>
-        </div>
-        """
-
-    reserve_block = ""
-    if fallback_exists:
-        reserve_block = f"""
-        <details>
-          <summary>Если не работает</summary>
-          <div class="details-inner">
-            Если основная ссылка не подключается, используйте резервный доступ.
-            <div class="actions">
-              <button
-                type="button"
-                class="copy-btn"
-                data-copy="{esc(fallback_primary_link)}"
-                data-ok="Резервный JSON/профиль скопирован"
-                onclick="copyFrom(this)"
-              >Скопировать резерв</button>
-              <button
-                type="button"
-                class="big-btn secondary"
-                data-copy="{esc(fallback_primary_link)}"
-                data-ok="Резервный JSON/профиль скопирован"
-                onclick="copyFrom(this)"
-              >Скопировать резерв</button>
-            </div>
-          </div>
-        </details>
-        """
-
     fallback_section = ""
     if fallback_exists:
         fallback_section = f"""
-    <details>
-      <summary>Резерв 8443 (если не получилось подключиться)</summary>
-      <div class="details-inner">
-        Используйте это только если основной профиль не подключается в вашей сети.
-        <div class="actions">
-          <button
-            type="button"
-            class="big-btn secondary"
-            data-copy="{esc(fallback_primary_link)}"
-            data-ok="Резервный профиль 8443 скопирован"
-            data-target="fallbackProfileLink"
-            onclick="copyFrom(this)"
-          >Скопировать резерв 8443</button>
-        </div>
         <div class="manual-copy-box">
           <div class="manual-copy-title">Резервная ссылка 8443</div>
           <textarea id="fallbackProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(fallback_primary_link)}</textarea>
         </div>
-      </div>
-    </details>
         """
 
     traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
@@ -1396,19 +1375,67 @@ def render_profile(slug: str):
 <body>
 <div class="wrap">
   <section class="hero">
-    <h1>🇳🇱 VPN Profile</h1>
-    <div class="subtitle">Личная страница подключения</div>
+    <h1>VPN профиль готов</h1>
+    <div class="subtitle">Ниже уже всё подготовлено. Скопируйте профиль и импортируйте его в VPN-приложении.</div>
+    <div class="hero-badge">● Профиль готов к подключению</div>
   </section>
 
-  <section class="card server-card">
-    <div class="server-left">
-      <div class="flag">🇳🇱</div>
+  <section class="card hero-card">
+    <div class="hero-card-head">
       <div>
-        <div class="server-name">{esc(display_name)}</div>
-        <div class="location">{esc(location)}</div>
+        <div class="hero-title">{esc(display_name)}</div>
+        <div class="hero-sub">Сервер: {esc(location)}. Если кнопка ниже не сработала с первого раза, откройте раздел «Если не получилось подключиться».</div>
+      </div>
+      <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
+    </div>
+    <div class="hero-helper">Рекомендуемый способ: сохраняет маршрутизацию для российских доменов.</div>
+    <div class="main-cta-wrap">
+      <button
+        type="button"
+        class="big-btn primary"
+        data-copy="{esc(json_link if json_exists else subscription_link)}"
+        data-ok="Профиль скопирован. Теперь откройте VPN-приложение и импортируйте из буфера."
+        data-target="jsonProfileLink"
+        onclick="copyFrom(this)"
+      >Скопировать профиль</button>
+    </div>
+  </section>
+
+  <section class="card quick-card">
+    <div class="qr-tile">
+      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
+    </div>
+    <div>
+      <div class="quick-title">Быстрое подключение</div>
+      <div class="muted">QR содержит профиль подключения</div>
+      <div class="tiny-note">Наведите камеру в VPN-приложении, если удобнее импорт через QR.</div>
+    </div>
+    <div class="actions">
+      <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-title">3 шага</div>
+    <div class="steps">
+      <div class="step step-line">
+        <div class="step-num">1</div>
+        <div class="step-text"><b>Скопируйте профиль</b>Нажмите кнопку выше «Скопировать профиль».</div>
+      </div>
+      <div class="step step-line">
+        <div class="step-num">2</div>
+        <div class="step-text"><b>Откройте VPN-приложение</b>Перейдите на экран импорта профиля.</div>
+      </div>
+      <div class="step step-line">
+        <div class="step-num">3</div>
+        <div class="step-text"><b>Импортируйте из буфера</b>Выберите import from clipboard / из буфера.</div>
       </div>
     </div>
-    <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
+
+    <div class="manual-copy-box" style="margin-top:12px;">
+      <div class="manual-copy-title">Основная ссылка</div>
+      <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
+    </div>
   </section>
 
   <section class="card">
@@ -1420,73 +1447,21 @@ def render_profile(slug: str):
       <div class="traffic-total">{esc(traffic_total_text)}</div>
     </div>
     {stats_note}
-
     <div class="progress"><i style="width:{percent}%"></i></div>
-
     <div class="traffic-meta">
-      <div class="metric">
-        <div class="k">Скачано</div>
-        <div class="v">{esc(down_text)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">Отправлено</div>
-        <div class="v">{esc(up_text)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">30 минут</div>
-        <div class="v">{connections} conn</div>
-      </div>
-      <div class="metric">
-        <div class="k">Последний вход</div>
-        <div class="v">{esc(last_seen)}</div>
-      </div>
+      <div class="metric"><div class="k">Скачано</div><div class="v">{esc(down_text)}</div></div>
+      <div class="metric"><div class="k">Отправлено</div><div class="v">{esc(up_text)}</div></div>
+      <div class="metric"><div class="k">30 минут</div><div class="v">{connections} conn</div></div>
+      <div class="metric"><div class="k">Последний вход</div><div class="v">{esc(last_seen)}</div></div>
     </div>
-  </section>
-
-  <section class="card quick-card">
-    <div class="qr-tile">
-      <img src="qr?kind=json&amp;v={qr_v}" alt="QR">
-    </div>
-    <div>
-      <div class="quick-title">Быстрое подключение</div>
-      <div class="muted">QR содержит профиль подключения</div>
-    </div>
-    <button type="button" class="icon-btn" onclick="showQrModal()" aria-label="Открыть QR">›</button>
   </section>
 
   <section class="card">
-    <div class="section-title">Подключение</div>
-
-    <div class="step" style="margin-bottom:14px;">
-      <div class="step-num">1</div>
-      <b>Скопируйте профиль и импортируйте его в VPN-приложении.</b>
-      Рекомендуемый способ: сохраняет маршрутизацию для российских доменов.
-    </div>
-
-    <button
-      type="button"
-      class="big-btn primary"
-      data-copy="{esc(json_link if json_exists else subscription_link)}"
-      data-ok="Профиль скопирован. Теперь откройте VPN-приложение и импортируйте из буфера."
-      data-target="jsonProfileLink"
-      onclick="copyFrom(this)"
-    >Скопировать профиль</button>
-
-    <div class="manual-copy-box" style="margin-top:12px;">
-      <div class="manual-copy-title">Основная ссылка</div>
-      <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
-    </div>
-
-    <div class="step" style="margin-top:14px;">
-      <div class="step-num">2</div>
-      <b>Импортируйте в VPN-приложение</b>
-      Откройте приложение и выберите импорт из буфера / clipboard. Если приложение спросит тип профиля — выбирайте JSON/config.
-    </div>
-
+    <div class="section-title">Помощь</div>
     <details>
       <summary>Если не получилось подключиться</summary>
       <div class="details-inner">
-        Короткий порядок: сначала подписка, затем резерв 8443, и только в крайнем случае Raw VLESS.
+        <div class="details-hint">Сначала попробуйте подписку. Если не помогло — резерв 8443. Raw VLESS используйте только как крайний вариант.</div>
         <div class="actions">
           <button
             type="button"
@@ -1496,6 +1471,7 @@ def render_profile(slug: str):
             data-target="subscriptionProfileLink"
             onclick="copyFrom(this)"
           >Скопировать подписку</button>
+          {"<button type='button' class='big-btn secondary' data-copy='" + esc(fallback_primary_link) + "' data-ok='Резервный профиль 8443 скопирован' data-target='fallbackProfileLink' onclick='copyFrom(this)'>Скопировать резерв 8443</button>" if fallback_exists else ""}
           <button
             type="button"
             class="big-btn secondary"
@@ -1508,29 +1484,24 @@ def render_profile(slug: str):
         <div class="manual-copy-box">
           <div class="manual-copy-title">Подписка</div>
           <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
+          {"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}
           <div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div>
           <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
         </div>
       </div>
     </details>
 
-    {fallback_section}
-  </section>
-
-  <section class="card">
-    <div class="section-title">Что важно знать</div>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">✓</div>
-        <b>Лучший вариант — JSON</b>
-        Он сохраняет Reality-настройки и правила маршрутизации для российских доменов.
+    <details>
+      <summary>Дополнительные варианты</summary>
+      <div class="details-inner">
+        <ul class="mini-list">
+          <li>Подписка .txt — альтернативный способ импорта.</li>
+          <li>Резерв 8443 — для сетей, где основной вариант блокируется.</li>
+          <li>Raw VLESS — только для ручного крайнего случая.</li>
+        </ul>
+        {fallback_section}
       </div>
-      <div class="step">
-        <div class="step-num">!</div>
-        <b>Raw VLESS — не основной</b>
-        На iPhone он иногда импортируется криво и может потерять часть настроек.
-      </div>
-    </div>
+    </details>
   </section>
 
   <section class="card footer-note">
@@ -1538,7 +1509,7 @@ def render_profile(slug: str):
   </section>
 
   <div class="actions">
-    <a class="big-btn secondary" href="logout">Выйти</a>
+    <a class="copy-btn" href="logout">Сменить профиль</a>
   </div>
 </div>
 
