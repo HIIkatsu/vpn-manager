@@ -4,9 +4,11 @@ import hashlib
 import hmac
 import html
 import json
+import os
 import re
 import secrets
 import subprocess
+import tempfile
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -36,7 +38,17 @@ def load_json(path: Path):
 
 
 def save_json(path: Path, data):
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
+    mode = 0o600 if path.name in {"auth.json", "user_access.json", "admin_login_rate_limit.json"} else 0o640
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=mode)
+
+
+def atomic_write_text(path: Path, text: str, mode=0o640):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", delete=False, dir=str(path.parent), encoding="utf-8") as f:
+        f.write(text)
+        tmp = Path(f.name)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
 
 
 def run(cmd, timeout=120):
@@ -156,7 +168,7 @@ def load_rate_limit():
 
 
 def save_rate_limit(data):
-    LOGIN_RATE_LIMIT.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(LOGIN_RATE_LIMIT, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=0o600)
 
 
 def too_many_attempts(ip):
@@ -261,7 +273,7 @@ def load_pending_changes():
 
 
 def save_pending_changes(data):
-    PENDING.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(PENDING, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=0o640)
 
 
 def mark_pending_change(action, slug=""):
@@ -426,17 +438,19 @@ def xray_stats():
     ]
 
     last_raw = ""
+    api_reachable = False
     for cmd in commands:
         code, out, err = run(cmd, timeout=15)
         raw = (out + "\n" + err).strip()
         last_raw = "$ " + " ".join(cmd) + "\n" + raw
 
         if code == 0:
+            api_reachable = True
             parsed = parse_xray_stats(raw)
             if parsed:
                 return parsed, True, last_raw
 
-    return {}, False, last_raw
+    return {}, api_reachable, last_raw
 
 
 def journal_activity(minutes=30):
@@ -2555,28 +2569,38 @@ class Handler(BaseHTTPRequestHandler):
         expected = self.current_csrf()
         return bool(sent and expected and hmac.compare_digest(sent, expected))
 
+    def real_client_ip(self):
+        x_real_ip = (self.headers.get("X-Real-IP", "") or "").strip()
+        if x_real_ip:
+            return x_real_ip
+        xff = (self.headers.get("X-Forwarded-For", "") or "").strip()
+        if xff:
+            first = xff.split(",", 1)[0].strip()
+            if first:
+                return first
+        return self.client_address[0] if self.client_address else "unknown"
+
     def do_HEAD(self):
         self.do_GET()
 
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
-
-        if path == "/health":
-            self.send_json({"ok": True, "service": "vpn-admin", "version": VERSION})
-            return
-
-        if path == "/logout":
+        public_get_routes = {"/health", "/logout"}
+        if path in public_get_routes:
+            if path == "/health":
+                self.send_json({"ok": True, "service": "vpn-admin", "version": VERSION})
+                return
             self.redirect("./", [
                 ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"),
                 ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"),
             ])
             return
 
-        if path == "/invite":
-            if not self.require_auth():
-                return
+        if not self.require_auth():
+            return
 
+        if path == "/invite":
             qs = parse_qs(parsed.query)
             slug = qs.get("slug", [""])[0]
             users = load_users()
@@ -2605,9 +2629,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/qr":
-            if not self.require_auth():
-                return
-
             qs = parse_qs(parsed.query)
             slug = qs.get("slug", [""])[0]
             kind = qs.get("kind", ["vpn"])[0]
@@ -2638,8 +2659,6 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/":
-            if not self.require_auth():
-                return
             self.send_html(render(csrf=self.current_csrf()))
             return
 
@@ -2653,7 +2672,7 @@ class Handler(BaseHTTPRequestHandler):
             f = self.form()
             username = f.get("username", "").strip()
             password = f.get("password", "")
-            client_ip = self.client_address[0] if self.client_address else "unknown"
+            client_ip = self.real_client_ip()
 
             if too_many_attempts(client_ip):
                 self.send_html(render_login("Слишком много попыток входа. Подождите 10 минут."), 429)
@@ -2742,7 +2761,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             rotate_access_code(slug)
-            mark_pending_change("rotate-code", slug)
             self.redirect("./?v=code-rotated-" + str(int(time.time())))
             return
 

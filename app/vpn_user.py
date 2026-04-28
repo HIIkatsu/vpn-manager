@@ -355,14 +355,16 @@ def xray_stats():
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user"],
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085"],
     ]
+    api_reachable = False
     for cmd in commands:
         code, out, err = run(cmd, timeout=15)
         raw = (out + "\n" + err).strip()
         if code == 0:
+            api_reachable = True
             parsed = parse_xray_stats(raw)
             if parsed:
                 return parsed, True
-    return {}, False
+    return {}, api_reachable
 
 
 def journal_activity(minutes=30):
