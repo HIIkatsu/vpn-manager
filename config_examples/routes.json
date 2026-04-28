@@ -1,0 +1,69 @@
+{
+  "name": "RU direct, others proxy",
+
+  "private_ips": [
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "::1/128",
+    "fc00::/7",
+    "fe80::/10"
+  ],
+
+  "direct_protocols": [
+    "bittorrent"
+  ],
+
+  "direct_ips": [
+    "geoip:ru"
+  ],
+
+  "direct_domains": [
+    "regexp:.*\\.ru$",
+    "regexp:.*\\.su$",
+    "regexp:.*\\.xn--p1ai$",
+    "regexp:.*\\.xn--p1acf$",
+
+    "geosite:category-ru",
+
+    "domain:yandex.com",
+    "domain:yandex.net",
+    "domain:yastatic.net",
+    "domain:yandexcloud.net",
+    "domain:ya.ru",
+    "full:go.yandex",
+
+    "domain:ozone.ru",
+    "domain:ozonusercontent.com",
+    "domain:ozon-st.cdn.ngenix.net",
+
+    "domain:wbstatic.net",
+    "domain:wbcdn.net",
+
+    "domain:vk.com",
+    "domain:userapi.com",
+    "domain:vkuseraudio.net",
+    "domain:mycdn.me",
+
+    "domain:tbank-online.com",
+    "domain:sberbank.com",
+    "domain:moex.com",
+
+    "domain:2gis.com",
+    "domain:avito.st",
+
+    "domain:beget.com",
+    "domain:megamarket.tech",
+    "domain:tildaapi.com",
+
+    "domain:onetwotrip.com",
+    "domain:ngenix.net",
+
+    "domain:tracker-api.vk-analytics.ru",
+    "domain:tracking-api.vk-analytics.ru"
+  ]
+}

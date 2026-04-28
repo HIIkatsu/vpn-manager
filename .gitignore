@@ -1,0 +1,18 @@
+# secrets / real server state
+settings.json
+users.json
+user_access.json
+auth.json
+admin_password*.txt
+*.key
+*.pem
+*.crt
+*.bak
+*.tmp
+
+# archives / dumps
+*.tar.gz
+vpn-current-audit-*
+vpn-core-audit-*
+backups/
+cleanup/
