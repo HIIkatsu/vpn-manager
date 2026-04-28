@@ -635,7 +635,7 @@ body{
   font-weight:850;
 }
 .quick-card{
-  display:grid;grid-template-columns:auto 1fr;
+  display:grid;grid-template-columns:auto 1fr auto;
   gap:14px;
   align-items:center;
 }
@@ -919,7 +919,7 @@ summary::-webkit-details-marker{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
   .quick-card{
-    grid-template-columns:84px 1fr;
+    grid-template-columns:84px minmax(0,1fr) 56px;
   }
   .icon-btn{
     width:56px;
@@ -1350,15 +1350,6 @@ def render_profile(slug: str):
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
 
-    fallback_section = ""
-    if fallback_exists:
-        fallback_section = f"""
-        <div class="manual-copy-box">
-          <div class="manual-copy-title">Резервная ссылка 8443</div>
-          <textarea id="fallbackProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(fallback_primary_link)}</textarea>
-        </div>
-        """
-
     traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
     down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Статистика недоступна"
     up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Статистика недоступна"
@@ -1432,10 +1423,15 @@ def render_profile(slug: str):
       </div>
     </div>
 
-    <div class="manual-copy-box" style="margin-top:12px;">
-      <div class="manual-copy-title">Основная ссылка</div>
-      <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
-    </div>
+    <details style="margin-top:12px;">
+      <summary>Не скопировалось автоматически?</summary>
+      <div class="details-inner">
+        <div class="manual-copy-box">
+          <div class="manual-copy-title">Основная ссылка</div>
+          <textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea>
+        </div>
+      </div>
+    </details>
   </section>
 
   <section class="card">
@@ -1499,7 +1495,6 @@ def render_profile(slug: str):
           <li>Резерв 8443 — для сетей, где основной вариант блокируется.</li>
           <li>Raw VLESS — только для ручного крайнего случая.</li>
         </ul>
-        {fallback_section}
       </div>
     </details>
   </section>
