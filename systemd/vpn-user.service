@@ -1,0 +1,15 @@
+# /etc/systemd/system/vpn-user.service
+[Unit]
+Description=VPN User Public Pages
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/vpn-manager
+ExecStart=/usr/bin/python3 /root/vpn-manager/vpn_user.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

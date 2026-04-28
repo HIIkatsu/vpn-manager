@@ -1,0 +1,32 @@
+{
+  "users": [
+    {
+      "name": "Me",
+      "slug": "me",
+      "uuid": "REDACTED",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Backup1",
+      "slug": "backup1",
+      "uuid": "REDACTED",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Алиса",
+      "slug": "alise",
+      "uuid": "REDACTED",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Мама",
+      "slug": "user-47375599",
+      "uuid": "REDACTED",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    }
+  ]
+}

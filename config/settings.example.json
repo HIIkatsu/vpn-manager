@@ -1,0 +1,14 @@
+{
+  "domain": "neurosmmai.ru",
+  "server_ip": "150.251.152.174",
+  "xray_port": 8443,
+  "subscription_path": "vpn-d87a8f94adf802aa6a0f7e35",
+  "subscription_dir": "/var/www/vpn-subscriptions-d87a8f94adf802aa6a0f7e35",
+  "profile_title": "🇳🇱 NeuroSMM VPN",
+  "profile_update_interval": 12,
+  "sni": "www.cloudflare.com",
+  "reality_dest": "www.cloudflare.com:443",
+  "private_key": "REDACTED",
+  "public_key": "PUBLIC_KEY_PLACEHOLDER",
+  "short_id": "SHORT_ID_PLACEHOLDER"
+}
