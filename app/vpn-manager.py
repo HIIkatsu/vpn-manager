@@ -18,10 +18,12 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -459,6 +461,32 @@ def test_xray_config(config):
         Path(temp_xray).unlink(missing_ok=True)
 
 
+def wait_for_local_port(port, timeout=10.0, interval=0.4):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(interval)
+            if sock.connect_ex(("127.0.0.1", int(port))) == 0:
+                return True
+        time.sleep(interval)
+    return False
+
+
+def print_xray_diagnostics():
+    print("Xray diagnostics (ss -lntp):", file=sys.stderr)
+    ss_out = sh(["ss", "-lntp"], check=False, capture=True, timeout=30)
+    if ss_out.stdout:
+        print(ss_out.stdout.rstrip(), file=sys.stderr)
+    if ss_out.stderr:
+        print(ss_out.stderr.rstrip(), file=sys.stderr)
+    print("Xray diagnostics (journalctl -u xray -n 80):", file=sys.stderr)
+    j_out = sh(["journalctl", "-u", "xray", "-n", "80", "--no-pager", "-l"], check=False, capture=True, timeout=30)
+    if j_out.stdout:
+        print(j_out.stdout.rstrip(), file=sys.stderr)
+    if j_out.stderr:
+        print(j_out.stderr.rstrip(), file=sys.stderr)
+
+
 def apply_config(dry_run=False):
     settings = load(SETTINGS)
     users_doc = load(USERS)
@@ -494,8 +522,8 @@ def apply_config(dry_run=False):
         xray_active = sh(["systemctl", "is-active", "xray"], check=False, capture=True, timeout=30).stdout.strip()
         if xray_active != "active":
             raise RuntimeError("xray is not active after restart")
-        port_check = sh(["bash", "-lc", f"ss -lntp | grep -q ':{int(settings['xray_port'])}'"], check=False, timeout=30)
-        if port_check.returncode != 0:
+        if not wait_for_local_port(settings["xray_port"], timeout=10.0, interval=0.4):
+            print_xray_diagnostics()
             raise RuntimeError(f"xray active but port {settings['xray_port']} is not listening")
     except Exception:
         print("Xray apply failed. Restoring previous Xray config.", file=sys.stderr)

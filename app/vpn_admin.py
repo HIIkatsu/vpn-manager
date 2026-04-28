@@ -540,34 +540,28 @@ body{
 .wrap{
   max-width:1180px;
   margin:0 auto;
-  padding:18px 14px 70px;
+  padding:16px 14px 70px;
 }
 .hero{
-  position:sticky;
-  top:0;
-  z-index:10;
-  margin:-18px -14px 14px;
-  padding:18px 14px 12px;
-  background:linear-gradient(to bottom, rgba(7,11,18,.97), rgba(7,11,18,.78), rgba(7,11,18,0));
-  backdrop-filter:blur(16px);
+  margin:0 0 12px;
+  padding:0;
 }
 .hero-inner{
-  max-width:1180px;
-  margin:0 auto;
+  width:100%;
   display:flex;
   justify-content:space-between;
-  gap:12px;
+  gap:10px;
   align-items:flex-start;
 }
 h1{
   margin:0;
-  font-size:clamp(34px,7vw,58px);
-  line-height:.92;
+  font-size:clamp(32px,7vw,54px);
+  line-height:.98;
   letter-spacing:-.075em;
 }
 .subtitle{
   color:var(--muted);
-  margin-top:8px;
+  margin-top:7px;
   font-size:15px;
 }
 .hero-actions{
@@ -585,12 +579,13 @@ h1{
 }
 .logout-mini{
   margin-left:auto;
-  padding:7px 10px !important;
-  border-radius:11px !important;
-  font-size:12px;
-  font-weight:700;
-  color:var(--muted) !important;
-  background:rgba(255,255,255,.06) !important;
+  padding:10px 14px !important;
+  border-radius:14px !important;
+  font-size:14px;
+  font-weight:800;
+  color:var(--text) !important;
+  background:rgba(255,255,255,.09) !important;
+  border:1px solid var(--line) !important;
 }
 .pending-compact-btn{
   width:100%;
