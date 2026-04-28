@@ -1380,10 +1380,10 @@ def render_profile(slug: str):
     </details>
         """
 
-    traffic_total_text = human_bytes(total) if stats_ok else "stats unavailable"
-    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ stats unavailable"
-    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ stats unavailable"
-    stats_note = "" if stats_ok else '<div class="muted" style="margin-top:8px">Статистика Xray сейчас недоступна. Это не 0 B — просто API временно не ответил.</div>'
+    traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
+    down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Статистика недоступна"
+    up_text = f"↑ {human_bytes(up)}" if stats_ok else "↑ Статистика недоступна"
+    stats_note = "" if stats_ok else '<div class="muted" style="margin-top:8px">Статистика Xray временно недоступна.</div>'
 
     return f"""<!doctype html>
 <html lang="ru">
