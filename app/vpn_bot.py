@@ -145,10 +145,10 @@ def render_user_detail(user, source_page=0):
         f"slug: <code>{html.escape(slug)}</code>",
         f"state: <b>{state}</b>",
         f"open/login/copied: <code>{s['opened']}/{s['logged_in']}/{s['copied']}</code>",
-        "",
-        "📌 <b>Client status</b>",
-        check_text.splitlines()[11] if len(check_text.splitlines()) > 11 else "client: <code>unknown</code>",
     ]
+    client_line = next((line for line in check_text.splitlines() if 'client: <code>' in line), '')
+    if client_line:
+        lines += ["", "📌 <b>Client status</b>", client_line]
     action = "Disable" if user.get('enabled', True) else "Enable"
     toggle = "dis" if user.get('enabled', True) else "ena"
     kb = {"inline_keyboard": [
@@ -289,6 +289,8 @@ def handle(text):
     if cmd == '/users':
         text, _ = render_users_page(0)
         return text
+    if cmd == '/invite' and not arg:
+        return 'Usage: /invite <name or slug>\nExample: /invite mama'
     if cmd == '/invite' and arg:
         settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
         matches, _ = _resolve_users(arg)
@@ -325,17 +327,24 @@ def handle(text):
             except Exception:
                 routing_ok = False
         client_present = False
-        try:
-            xcfg = json.loads((BASE / 'xray' / 'config.json').read_text(encoding='utf-8'))
+        xray_paths = [Path('/usr/local/etc/xray/config.json'), BASE / 'xray' / 'config.json']
+        for xray_path in xray_paths:
+            if not xray_path.exists():
+                continue
+            try:
+                xcfg = json.loads(xray_path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
             for inbound in xcfg.get('inbounds', []):
                 for client in inbound.get('settings', {}).get('clients', []):
-                    if str(client.get('email', '')).strip() == slug:
+                    email = str(client.get('email', '')).strip()
+                    if email and email.split('@')[0] == slug:
                         client_present = True
                         break
                 if client_present:
                     break
-        except Exception:
-            client_present = False
+            if client_present:
+                break
 
         required_ok = txt and js and routing_ok and client_present
         return '\n'.join([
