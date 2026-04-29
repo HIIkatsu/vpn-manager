@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import socket
 import subprocess
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-BASE = Path('/root/vpn-manager')
+VPN_MANAGER_HOME = Path(os.environ.get('VPN_MANAGER_HOME', '/root/vpn-manager'))
+BASE = VPN_MANAGER_HOME
 SETTINGS = BASE / 'settings.json'
 USERS = BASE / 'users.json'
 XRAY_CONFIG = Path('/usr/local/etc/xray/config.json')
@@ -31,10 +34,13 @@ def service_status(name):
     return (p.stdout or '').strip() == 'active', (p.stdout or p.stderr).strip()
 
 
-def http_ok(url):
+def http_ok(url, allow_statuses=(200,)):
+    allowed = {int(x) for x in allow_statuses}
     try:
         with urllib.request.urlopen(url, timeout=4) as r:
-            return 200 <= r.status < 500, f'HTTP {r.status}'
+            return r.status in allowed, f'HTTP {r.status}'
+    except urllib.error.HTTPError as e:
+        return e.code in allowed, f'HTTP {e.code}'
     except Exception as e:
         return False, str(e)
 
@@ -64,8 +70,8 @@ def run_check():
     ports = {str(p): {'ok': is_port_listening(p)} for p in PORTS}
     report['checks']['ports'] = ports
 
-    admin_ok, admin_msg = http_ok(f'https://{domain}/vpn-admin/')
-    user_ok, user_msg = http_ok(f'https://{domain}/{user_path(settings)}/')
+    admin_ok, admin_msg = http_ok(f'https://{domain}/vpn-admin/', allow_statuses=(200, 401, 403))
+    user_ok, user_msg = http_ok(f'https://{domain}/{user_path(settings)}/', allow_statuses=(200,))
     report['checks']['http'] = {'admin': {'ok': admin_ok, 'status': admin_msg}, 'user': {'ok': user_ok, 'status': user_msg}}
 
     route_ok = False
