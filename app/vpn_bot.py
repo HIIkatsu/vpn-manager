@@ -9,6 +9,7 @@ CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
 ACCESS = BASE / 'user_access.json'
 PENDING = {}
+USERS_PAGE_SIZE = 6
 
 
 def load_cfg():
@@ -81,6 +82,131 @@ def _format_user(u):
     name = str(u.get('name', '')).strip()
     slug = str(u.get('slug', '')).strip()
     return f"{name} ({slug})" if name else slug
+
+
+def load_users():
+    return json.loads((BASE / 'users.json').read_text(encoding='utf-8')).get('users', [])
+
+
+def find_user(query):
+    matches, _ = _resolve_users(query)
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def compact_check_text(user):
+    slug = str(user.get('slug', '')).strip()
+    name = str(user.get('name', '')).strip() or slug
+    check_text = handle(f'/check {slug}')
+    return f"🔎 <b>Check {html.escape(name)}</b>\n\n{check_text.splitlines()[2] if len(check_text.splitlines()) > 2 else ''}\n\n" + '\n'.join(check_text.splitlines()[3:])
+
+
+def render_users_page(page=0):
+    users = [u for u in load_users() if str(u.get('slug', '')).strip()]
+    users.sort(key=lambda x: (str(x.get('name', '')).lower(), str(x.get('slug', '')).lower()))
+    total = len(users)
+    enabled = sum(1 for u in users if u.get('enabled', True))
+    disabled = total - enabled
+    pages = max(1, (total + USERS_PAGE_SIZE - 1) // USERS_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    start = page * USERS_PAGE_SIZE
+    visible = users[start:start + USERS_PAGE_SIZE]
+    lines = ["👥 <b>Users</b>", f"total: <b>{total}</b> · enabled: <b>{enabled}</b> · disabled: <b>{disabled}</b>", ""]
+    for idx, u in enumerate(visible, start=1):
+        slug = str(u.get('slug', '')).strip()
+        name = str(u.get('name', '')).strip() or slug
+        stats = user_stats(slug)
+        state = "🟢" if u.get('enabled', True) else "🔴"
+        lines.append(f"{idx}. {state} <b>{html.escape(name)}</b> <code>{html.escape(slug)}</code>")
+        lines.append(f"open/login/copied: <code>{stats['opened']}/{stats['logged_in']}/{stats['copied']}</code>")
+    kb = []
+    for u in visible:
+        slug = str(u.get('slug', '')).strip()
+        kb.append([{"text": str(u.get('name', '')).strip() or slug, "callback_data": f"u:d:{slug}"}])
+    nav = []
+    if page > 0:
+        nav.append({"text": "◀️ Prev", "callback_data": f"u:p:{page - 1}"})
+    nav.append({"text": "🔄 Refresh", "callback_data": f"u:p:{page}"})
+    if page < pages - 1:
+        nav.append({"text": "Next ▶️", "callback_data": f"u:p:{page + 1}"})
+    kb.append(nav)
+    return '\n'.join(lines).strip(), {"inline_keyboard": kb}
+
+
+def render_user_detail(user, source_page=0):
+    slug = str(user.get('slug', '')).strip()
+    name = str(user.get('name', '')).strip() or slug
+    s = user_stats(slug)
+    state = "enabled" if user.get('enabled', True) else "disabled"
+    check_text = handle(f'/check {slug}')
+    lines = [
+        f"👤 <b>{html.escape(name)}</b>",
+        f"slug: <code>{html.escape(slug)}</code>",
+        f"state: <b>{state}</b>",
+        f"open/login/copied: <code>{s['opened']}/{s['logged_in']}/{s['copied']}</code>",
+        "",
+        "📌 <b>Client status</b>",
+        check_text.splitlines()[11] if len(check_text.splitlines()) > 11 else "client: <code>unknown</code>",
+    ]
+    action = "Disable" if user.get('enabled', True) else "Enable"
+    toggle = "dis" if user.get('enabled', True) else "ena"
+    kb = {"inline_keyboard": [
+        [{"text": "Invite", "callback_data": f"u:i:{slug}:{source_page}"}, {"text": "Check", "callback_data": f"u:c:{slug}:{source_page}"}],
+        [{"text": "Reissue code", "callback_data": f"u:r:{slug}:{source_page}"}],
+        [{"text": action, "callback_data": f"u:t:{toggle}:{slug}:{source_page}"}],
+        [{"text": "⬅️ Back", "callback_data": f"u:p:{source_page}"}],
+    ]}
+    return '\n'.join(lines), kb
+
+
+def handle_callback(data):
+    if not data.startswith('u:'):
+        return "⚠️ Unknown action.", None
+    parts = data.split(':')
+    kind = parts[1]
+    if kind == 'p':
+        page = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+        return render_users_page(page)
+    if kind == 'd':
+        user = find_user(parts[2] if len(parts) > 2 else '')
+        if not user:
+            return "⚠️ User not found or stale menu.", None
+        return render_user_detail(user, 0)
+    if kind in ('i', 'c', 'r'):
+        slug = parts[2] if len(parts) > 2 else ''
+        page = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+        user = find_user(slug)
+        if not user:
+            return "⚠️ User not found or stale menu.", None
+        name = str(user.get('name', '')).strip() or slug
+        if kind == 'i':
+            return handle(f"/invite {slug}"), {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
+        if kind == 'c':
+            return compact_check_text(user), {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
+        return f"⚠️ Confirm reissue for <b>{html.escape(name)}</b>?", {"inline_keyboard": [[{"text": "✅ Confirm", "callback_data": f"u:rc:{slug}:{page}"}, {"text": "Cancel", "callback_data": f"u:d:{slug}"}]]}
+    if kind == 'rc':
+        slug = parts[2] if len(parts) > 2 else ''
+        page = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+        rc, out, err = run(['python3', str(BASE / 'app' / 'vpn-manager.py'), 'reissue-user', slug])
+        body = out or err or 'No output'
+        text = f"{'✅' if rc == 0 else '❌'} <b>Reissue {html.escape(slug)}</b>\n\n{safe_pre(body[:1800])}"
+        return text, {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
+    if kind == 't':
+        action = parts[2] if len(parts) > 2 else ''
+        slug = parts[3] if len(parts) > 3 else ''
+        page = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+        verb = "disable" if action == "dis" else "enable"
+        return f"⚠️ Confirm {verb} for <code>{html.escape(slug)}</code>?", {"inline_keyboard": [[{"text": "✅ Confirm", "callback_data": f"u:tc:{action}:{slug}:{page}"}, {"text": "Cancel", "callback_data": f"u:d:{slug}"}]]}
+    if kind == 'tc':
+        action = parts[2] if len(parts) > 2 else ''
+        slug = parts[3] if len(parts) > 3 else ''
+        page = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+        cmd = 'disable-user' if action == 'dis' else 'enable-user'
+        rc, out, err = run(['python3', str(BASE / 'app' / 'vpn-manager.py'), cmd, slug])
+        text = f"{'✅' if rc == 0 else '❌'} <b>{'Disabled' if action == 'dis' else 'Enabled'} {html.escape(slug)}</b>\n{safe_pre((out or err or 'No output')[:1200])}"
+        return text, {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
+    return "⚠️ Unknown action.", None
 
 
 def public_user_path(settings):
@@ -161,18 +287,8 @@ def handle(text):
     if cmd == '/status':
         return format_status()
     if cmd == '/users':
-        users = json.loads((BASE / 'users.json').read_text(encoding='utf-8')).get('users', [])
-        lines = ['👥 <b>Users</b>', '']
-        for x in users:
-            slug = str(x.get('slug', '')).strip()
-            if not slug:
-                continue
-            name = str(x.get('name', '')).strip() or slug
-            s = user_stats(slug)
-            lines.append(f"✅ {html.escape(name)} <code>{html.escape(slug)}</code>")
-            lines.append(f"open: {s['opened']} · login: {s['logged_in']} · copied: {s['copied']}")
-            lines.append('')
-        return '\n'.join(lines).strip()
+        text, _ = render_users_page(0)
+        return text
     if cmd == '/invite' and arg:
         settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
         matches, _ = _resolve_users(arg)
@@ -257,12 +373,37 @@ def main():
             for u in ups:
                 offset = u['update_id'] + 1
                 m = u.get('message', {})
+                cb = u.get('callback_query', {})
+                if cb:
+                    cq_id = cb.get('id')
+                    msg = cb.get('message', {})
+                    chat_id = msg.get('chat', {}).get('id')
+                    data = cb.get('data', '')
+                    if not chat_id:
+                        continue
+                    if not allowed(chat_id, cfg):
+                        api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Access denied'})
+                        continue
+                    try:
+                        text, kb = handle_callback(data)
+                        payload = {'chat_id': chat_id, 'message_id': msg.get('message_id'), 'text': text, 'parse_mode': 'HTML'}
+                        if kb:
+                            payload['reply_markup'] = json.dumps(kb)
+                        api(token, 'editMessageText', payload)
+                        api(token, 'answerCallbackQuery', {'callback_query_id': cq_id})
+                    except Exception:
+                        api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Action failed'})
+                    continue
                 chat_id = m.get('chat', {}).get('id')
                 text = m.get('text', '')
                 if not chat_id or not text:
                     continue
                 if not allowed(chat_id, cfg):
                     api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Access denied', 'parse_mode': 'HTML'})
+                    continue
+                if text.strip().startswith('/users'):
+                    msg_text, kb = render_users_page(0)
+                    api(token, 'sendMessage', {'chat_id': chat_id, 'text': msg_text, 'parse_mode': 'HTML', 'reply_markup': json.dumps(kb)})
                     continue
                 for chunk in split_html_message(handle(text)):
                     api(token, 'sendMessage', {'chat_id': chat_id, 'text': chunk, 'parse_mode': 'HTML'})
