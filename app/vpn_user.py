@@ -29,7 +29,21 @@ VERSION = "vpn-user-ui-premium-compact-v6"
 
 TRAFFIC_SOFT_LIMIT = 1024 * 1024 * 1024  # 1 GB soft bar scale if user is alone
 
-ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+def resolve_icon_dir():
+    script_dir = Path(__file__).resolve().parent
+    candidates = [
+        script_dir / "assets" / "icons",
+        script_dir / "app" / "assets" / "icons",
+        BASE / "app" / "assets" / "icons",
+        BASE / "assets" / "icons",
+    ]
+    for icon_dir in candidates:
+        if (icon_dir / "icon_manifest.json").exists():
+            return icon_dir
+    return candidates[0]
+
+
+ICON_DIR = resolve_icon_dir()
 ICON_MANIFEST = ICON_DIR / "icon_manifest.json"
 
 
@@ -1278,9 +1292,9 @@ summary:active{
   box-shadow:0 18px 50px rgba(0,0,0,.4);padding:18px;
 }
 .connect-title{font-size:28px;font-weight:900;letter-spacing:-.02em}
-.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.35;max-width:52ch}
-.app-card{margin-top:12px;border-radius:18px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.03);padding:14px}
-.app-card.recommended{background:linear-gradient(165deg,rgba(44,58,84,.86),rgba(19,27,42,.92));border-color:rgba(108,161,198,.45);box-shadow:inset 0 1px 0 rgba(165,220,255,.12)}
+.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.35}
+.app-card{margin-top:12px;border-radius:18px;border:1px solid rgba(134,167,218,.2);background:linear-gradient(170deg,rgba(31,39,58,.82),rgba(18,24,38,.88));padding:14px}
+.app-card.recommended{background:linear-gradient(165deg,rgba(43,60,88,.88),rgba(18,31,51,.9));border-color:rgba(96,164,201,.42);box-shadow:inset 0 1px 0 rgba(158,210,242,.1)}
 .app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .app-head{display:flex;align-items:center;gap:10px}
 .app-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.18);background:linear-gradient(145deg,rgba(44,56,86,.95),rgba(23,31,54,.95));overflow:hidden}
@@ -1289,18 +1303,20 @@ summary:active{
 .recommended .app-avatar{border-color:rgba(108,172,214,.42);background:linear-gradient(145deg,rgba(51,73,109,.95),rgba(26,38,62,.95))}
 .app-pill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 12px}
 .app-icons{display:contents}
-.mini-app{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;min-width:0}
+.mini-app{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(101,154,196,.09);border:1px solid rgba(132,186,226,.24);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;min-width:0}
 .mini-app svg,.mini-app img{width:18px;height:18px;display:block;opacity:.98;flex:0 0 auto}
-.manual-section{margin-top:10px;padding:11px;border-radius:12px;border:1px solid rgba(142,178,228,.24);background:linear-gradient(180deg,rgba(93,122,172,.12),rgba(255,255,255,.02))}
-.manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#aebcdf;margin:0 0 8px}
+.manual-section{margin-top:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(132,179,217,.2);background:rgba(75,109,149,.1)}
+.manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#b7c9e9;margin:0 0 8px}
 .json-pill{display:flex;align-items:center;justify-content:center;width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:14px;font-weight:700;text-decoration:none}
-.advanced-note{margin-top:6px;font-size:12px;color:#aebcdf;line-height:1.35}
+.advanced-note{margin-top:6px;font-size:12px;color:#b7c9e9;line-height:1.3}
 .app-name{font-size:19px;font-weight:800}
 .app-badge{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(139,181,255,.15);border:1px solid rgba(139,181,255,.34);color:#dce9ff}
-.app-text{font-size:15px;line-height:1.4;color:#d2defc;margin:0 0 12px;max-width:54ch}
+.app-text{font-size:14px;line-height:1.4;color:#d2defc;margin:0 0 12px}
 .app-hint{margin-top:8px;font-size:12px;color:#cbd8ff;line-height:1.35}
 .big-btn.full{width:100%;display:flex;align-items:center;justify-content:center}
 .connect-footer{display:flex;justify-content:flex-end;margin-top:14px}
+.connect-footer .copy-btn{background:rgba(255,255,255,.03);border-color:rgba(194,211,243,.24);color:#c7d6f6}
+@media (max-width:430px){.app-pill-grid{grid-template-columns:1fr 1fr}.mini-app{justify-content:flex-start;padding:8px 9px;font-size:11px}}
 @media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}.connect-footer{justify-content:stretch}.connect-footer .copy-btn{width:100%}}
 
 </style>
@@ -1677,7 +1693,7 @@ def render_profile(slug: str):
 <div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
   <div class="connect-card">
     <div class="connect-title">Подключение VPN</div>
-    <div class="connect-sub">Рекомендуем Hiddify. Если не сработает — скопируйте ссылку.</div>
+    <div class="connect-sub">Быстрое подключение через Hiddify и компактный запасной вариант ниже.</div>
 
     <div class="app-card recommended">
       <div class="app-top">
