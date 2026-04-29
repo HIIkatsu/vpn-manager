@@ -1,0 +1,9 @@
+[Unit]
+Description=Run VPN Manager backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

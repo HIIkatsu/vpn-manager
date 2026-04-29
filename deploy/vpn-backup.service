@@ -1,0 +1,6 @@
+[Unit]
+Description=VPN Manager daily backup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /root/vpn-manager/app/vpn_backup.py

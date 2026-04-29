@@ -655,6 +655,34 @@ def set_enabled(slug, enabled):
     print("Run: vpn-manager apply")
 
 
+
+def reissue_user(slug):
+    slug = validate_slug(slug)
+    users_doc = load(USERS)
+    found = None
+    for u in users_list(users_doc):
+        if u["slug"] == slug:
+            found = u
+            break
+    if not found:
+        raise SystemExit(f"No such user: {slug}")
+    old_uuid = found.get("uuid")
+    found["uuid"] = str(uuid.uuid4())
+    save(USERS, users_doc)
+    pending = BASE / "admin_pending_changes.json"
+    pending_data = {}
+    if pending.exists():
+        try:
+            pending_data = load(pending)
+        except Exception:
+            pending_data = {}
+    pending_data["reissue"] = pending_data.get("reissue", []) + [{"slug": slug, "old_uuid": old_uuid, "new_uuid": found["uuid"], "ts": now()}]
+    save(pending, pending_data)
+    print(f"Reissued UUID for {slug}")
+    print(f"Old UUID: {old_uuid}")
+    print(f"New UUID: {found['uuid']}")
+    print("Pending changes recorded. Run: vpn-manager apply")
+
 def delete_user(slug):
     slug = validate_slug(slug)
     users_doc = load(USERS)
@@ -741,6 +769,9 @@ def main():
     delete_parser = sub.add_parser("delete-user")
     delete_parser.add_argument("slug")
 
+    reissue_parser = sub.add_parser("reissue-user")
+    reissue_parser.add_argument("slug")
+
     args = parser.parse_args()
     if args.cmd == "apply":
         apply_config(args.dry_run)
@@ -760,6 +791,8 @@ def main():
         set_enabled(args.slug, True)
     elif args.cmd == "delete-user":
         delete_user(args.slug)
+    elif args.cmd == "reissue-user":
+        reissue_user(args.slug)
 
 
 if __name__ == "__main__":
