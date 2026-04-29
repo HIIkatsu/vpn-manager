@@ -167,7 +167,7 @@ def handle(text):
     arg=parts[1] if len(parts)>1 else ''
     if cmd=='/start': return 'VPN admin bot online.'
     if cmd=='/status':
-        c,o,e=run(['python3','/root/vpn-manager/app/vpn_health.py','--json'])
+        c,o,e=run(['python3', str(BASE / 'app' / 'vpn_health.py'),'--json'])
         if c not in (0, 1):
             raise RuntimeError((o+'\n'+e).strip() or 'status command failed')
         return format_status(json.loads(o))
@@ -211,7 +211,7 @@ def handle(text):
         title = f"🔍 <b>Check {esc(u.get('name') or slug)}</b> <code>{esc(slug)}</code>" if u else f"🔍 <b>Check</b> <code>{esc(slug)}</code>"
         return f"{title}\n\n<pre>{esc((o + chr(10) + e).strip()[:2500] or 'no output')}</pre>\n\n<b>Result</b>\n{status}"
     if cmd=='/backup':
-        c,o,e=run(['python3','/root/vpn-manager/app/vpn_backup.py'])
+        c,o,e=run(['python3', str(BASE / 'app' / 'vpn_backup.py')])
         if c != 0:
             raise RuntimeError((o+'\n'+e).strip() or 'backup failed')
         backup_path = (o+'\n'+e).strip().splitlines()[-1]
@@ -223,7 +223,7 @@ def handle(text):
         if c!=0: return 'Apply failed:\n'+(o+'\n'+e)[:3000]
         run(['systemctl','restart','vpn-admin'])
         run(['systemctl','restart','vpn-user'])
-        c,o,e=run(['python3','/root/vpn-manager/app/vpn_health.py'])
+        c,o,e=run(['python3', str(BASE / 'app' / 'vpn_health.py')])
         return 'Repair done:\n'+(o+'\n'+e)[:3000]
     if cmd=='/reissue' and arg:
         u = find_user(arg)
