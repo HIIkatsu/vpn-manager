@@ -359,7 +359,7 @@ def public_user_path(settings):
 
 
 def public_user_url(settings):
-    return f"https://{settings['domain']}/{public_user_path(settings)}/"
+    return f"https://{settings['domain']}/{public_user_path(settings)}"
 
 
 def subscription_base(settings):
@@ -2067,7 +2067,8 @@ def render(message="", log="", csrf=""):
         invite_text = (
             f"🔐 VPN доступ — {name}\\n\\n"
             f"Страница подключения:\\n{user_page_url}\\n\\n"
-            f"Код доступа: {access_code}\\n"
+            f"Код доступа: {access_code}\\n\\n"
+            "Если ссылка не открылась, откройте её в браузере вручную.\\n"
         )
 
         cards += f"""
@@ -2725,7 +2726,8 @@ class Handler(BaseHTTPRequestHandler):
             invite_text = (
                 f"🔐 VPN доступ — {name}\n\n"
                 f"Страница подключения:\n{user_page}\n\n"
-                f"Код доступа: {access_code}\n"
+                f"Код доступа: {access_code}\n\n"
+                "Если ссылка не открылась, откройте её в браузере вручную.\n"
             )
             self.send_html(render_invite_page(user, invite_text, user_page, access_code))
             return
