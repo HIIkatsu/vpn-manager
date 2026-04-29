@@ -231,6 +231,23 @@ def cookie_path():
     except Exception:
         return "/"
 
+
+def record_invite_event(slug: str, event: str, meta=None):
+    try:
+        data = load_json(INVITE_EVENTS, {"events": []})
+        if not isinstance(data, dict):
+            data = {"events": []}
+        if not isinstance(data.get("events"), list):
+            data["events"] = []
+        rec = {"slug": str(slug), "event": str(event), "ts": int(time.time())}
+        if isinstance(meta, dict) and meta:
+            rec["meta"] = meta
+        data["events"].append(rec)
+        data["events"] = data["events"][-5000:]
+        save_json(INVITE_EVENTS, data)
+    except Exception:
+        pass
+
 def find_user(slug: str):
     for user in load_users():
         if str(user.get("slug", "")) == str(slug):
@@ -1278,6 +1295,7 @@ async function copyText(value, okText, visibleTextareaId){
 
 function copyFrom(el){
   copyText(el.dataset.copy || '', el.dataset.ok || 'Скопировано', el.dataset.target || '');
+  try{fetch('event',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=profile_copied'});}catch(e){}
 }
 
 function showQrModal(){
