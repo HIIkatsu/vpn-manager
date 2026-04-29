@@ -1,25 +1,37 @@
 #!/usr/bin/env python3
 import html
 import json
+import os
+import re
 import secrets
 import subprocess
 import time
 import traceback
+import unicodedata
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parents[1]
-if not (BASE / 'settings.json').exists():
-    BASE = Path('/root/vpn-manager')
+VPN_MANAGER_HOME = Path(os.environ.get("VPN_MANAGER_HOME", "/root/vpn-manager"))
+BASE = VPN_MANAGER_HOME
 CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
-PENDING = {}
+PENDING = BASE / 'admin_pending_changes.json'
 MAX_TG_MESSAGE = 3800
 
 
 def load_cfg():
     return json.loads(CFG.read_text(encoding='utf-8'))
+
+
+def load_pending():
+    if PENDING.exists():
+        return json.loads(PENDING.read_text(encoding='utf-8'))
+    return {}
+
+
+def save_pending(data):
+    PENDING.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
 def api(token, method, data=None):
     url = f'https://api.telegram.org/bot{token}/{method}'
@@ -89,19 +101,31 @@ def load_users():
 
 
 def find_user(query):
+    def normalize(v):
+        v = unicodedata.normalize('NFKD', str(v or '')).casefold()
+        v = ''.join(ch for ch in v if not unicodedata.combining(ch))
+        return re.sub(r'[^a-z0-9]+', '', v)
     q = str(query or '').strip()
     if not q:
-        return None
+        return None, []
     ql = q.casefold()
+    qn = normalize(q)
+    matches = []
     for u in load_users():
-        if str(u.get('slug', '')).strip().casefold() == ql:
-            return u
-    for u in load_users():
-        for key in ('name', 'alias', 'username'):
-            v = str(u.get(key, '')).strip()
-            if v and v.casefold() == ql:
-                return u
-    return None
+        vals = [u.get('slug', ''), u.get('name', ''), u.get('alias', ''), u.get('username', '')]
+        norm_vals = [normalize(x) for x in vals if x]
+        raw_vals = [str(x).strip().casefold() for x in vals if x]
+        if ql in raw_vals or (qn and qn in norm_vals):
+            matches.append(u)
+    if len(matches) == 1:
+        return matches[0], []
+    return None, matches
+
+
+def access_codes():
+    path = BASE / 'user_access.json'
+    data = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    return data.get('codes', data if isinstance(data, dict) else {})
 
 
 def format_status(report):
@@ -183,12 +207,15 @@ def handle(text):
             lines.append('')
         return '\n'.join(lines).strip() or 'No users'
     if cmd=='/invite' and arg:
-        u = find_user(arg)
+        u, matches = find_user(arg)
+        if matches:
+            opts = '\n'.join(f"• {esc(x.get('name') or x.get('slug'))} <code>{esc(x.get('slug'))}</code>" for x in matches[:10])
+            return f"⚠️ <b>Multiple users matched</b>\n{opts}"
         if not u:
             return f"❌ <b>Error</b>\n<code>user not found: {esc(arg)}</code>"
         settings = json.loads((BASE/'settings.json').read_text())
         page = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
-        code = esc(u.get('access_code', 'n/a'))
+        code = esc(access_codes().get(u.get('slug'), 'n/a'))
         name = esc(u.get('name') or u.get('slug'))
         lines = [
             f"🔗 <b>Invite for {name}</b>",
@@ -204,7 +231,10 @@ def handle(text):
         ]
         return '\n'.join(lines)
     if cmd=='/check' and arg:
-        u = find_user(arg)
+        u, matches = find_user(arg)
+        if matches:
+            opts = '\n'.join(f"• {esc(x.get('name') or x.get('slug'))} <code>{esc(x.get('slug'))}</code>" for x in matches[:10])
+            return f"⚠️ <b>Multiple users matched</b>\n{opts}"
         slug = u.get('slug', arg) if u else arg
         c,o,e=run(['vpn-manager','check-user',slug])
         status = '✅ User profile looks OK' if c == 0 else '❌ User profile has issues'
@@ -226,17 +256,23 @@ def handle(text):
         c,o,e=run(['python3', str(BASE / 'app' / 'vpn_health.py')])
         return 'Repair done:\n'+(o+'\n'+e)[:3000]
     if cmd=='/reissue' and arg:
-        u = find_user(arg)
+        u, matches = find_user(arg)
+        if matches:
+            return f"⚠️ <b>Multiple users matched</b>"
         if u:
             arg = u.get('slug', arg)
         token=secrets.token_hex(4)
-        PENDING[token]=arg
+        pending = load_pending()
+        pending[token] = arg
+        save_pending(pending)
         return f'Confirm reissue for {arg}: /confirm {token}'
     if cmd=='/confirm' and arg:
-        slug=PENDING.get(arg)
+        pending = load_pending()
+        slug=pending.get(arg)
         if not slug: return 'Bad/expired token'
         c,o,e=run(['vpn-manager','reissue-user',slug])
-        PENDING.pop(arg,None)
+        pending.pop(arg,None)
+        save_pending(pending)
         return (o+'\n'+e)[:3500]
     return 'Unknown command'
 

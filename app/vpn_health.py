@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import socket
 import subprocess
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-BASE = Path('/root/vpn-manager')
+BASE = Path(os.environ.get("VPN_MANAGER_HOME", "/root/vpn-manager"))
 SETTINGS = BASE / 'settings.json'
 USERS = BASE / 'users.json'
 XRAY_CONFIG = Path('/usr/local/etc/xray/config.json')
@@ -36,6 +38,10 @@ def http_ok(url):
         with urllib.request.urlopen(url, timeout=4) as r:
             ok = 200 <= r.status < 500
             return ok, f'HTTP {r.status}', r.status
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return True, f'HTTP {e.code}', e.code
+        return False, f'HTTP {e.code}', e.code
     except Exception as e:
         return False, str(e), None
 
