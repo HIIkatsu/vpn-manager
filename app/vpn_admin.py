@@ -570,15 +570,30 @@ h1{
   flex-wrap:wrap;
   justify-content:flex-end;
 }
+.hero-stack{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.hero-admin{
+  margin-bottom:14px;
+  padding:18px;
+  background:linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.045));
+  border:1px solid var(--line);
+  border-radius:28px;
+  box-shadow:0 24px 70px rgba(0,0,0,.28);
+  backdrop-filter:blur(20px);
+}
 .hero-admin .hero-inner{
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
+  align-items:flex-start;
 }
 .hero-admin .hero-actions{
-  width:100%;
-  justify-content:flex-start;
+  margin-left:auto;
+  justify-content:flex-end;
+  flex:0 0 auto;
 }
 .logout-mini{
-  margin-left:auto;
   padding:10px 14px !important;
   border-radius:14px !important;
   font-size:14px;
@@ -1040,8 +1055,16 @@ pre{
     flex-direction:column;
   }
   .hero-admin .hero-inner{
-    flex-direction:row;
+    flex-direction:column;
     align-items:flex-start;
+  }
+  .hero-admin .hero-actions{
+    width:100%;
+    justify-content:flex-start;
+    margin-left:0;
+  }
+  .logout-mini{
+    align-self:flex-end;
   }
   .share-actions{
     grid-template-columns:1fr;
@@ -2158,15 +2181,17 @@ def render(message="", log="", csrf=""):
 <body>
 <div class="wrap">
   <header class="hero hero-admin">
-    <div class="hero-inner">
-      <div>
-        <h1>🇳🇱 VPN Admin</h1>
-        <div class="subtitle">Пользователи, коды доступа, подписки и состояние сервера</div>
+    <div class="hero-stack">
+      <div class="hero-inner">
+        <div>
+          <h1>🇳🇱 VPN Admin</h1>
+          <div class="subtitle">Пользователи, коды доступа, подписки и состояние сервера</div>
+        </div>
+        <div class="hero-actions">
+          <a class="button-link logout-mini" href="logout">Выйти</a>
+        </div>
       </div>
-      <div class="hero-actions">
-        <a class="button-link logout-mini" href="logout">Выйти</a>
-        {pending_button_html}
-      </div>
+      {pending_button_html}
     </div>
   </header>
 
