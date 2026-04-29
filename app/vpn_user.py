@@ -1245,7 +1245,6 @@ summary:active{
 .manual-section{margin-top:4px;padding:10px 11px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02)}
 .manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#aebcdf;margin:0 0 8px}
 .json-pill{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:13px;font-weight:700;text-decoration:none}
-.advanced-note{margin-top:6px;font-size:12px;color:#aebcdf}
 .app-name{font-size:19px;font-weight:800}
 .app-badge{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(139,181,255,.15);border:1px solid rgba(139,181,255,.34);color:#dce9ff}
 .app-text{font-size:15px;line-height:1.4;color:#d2defc;margin:0 0 12px;max-width:54ch}
@@ -1633,8 +1632,8 @@ def render_profile(slug: str):
       <p class="app-text">Для Happ, v2rayNG, NekoBox, Streisand и других клиентов.</p>
       <div class="app-icons" aria-hidden="true"><span class="mini-app">Happ</span><span class="mini-app">v2rayNG</span><span class="mini-app">NekoBox</span><span class="mini-app">Streisand</span></div>
       <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">Скопировать ссылку</button>
-      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><div class='app-text manual-text'>JSON-файл для совместимых клиентов и ручного импорта.</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a></div>" if json_exists else ""}
     </div>
+    {"<div class='app-card manual-section'><div class='manual-title'>Ручная настройка</div><div class='app-text manual-text'>JSON-файл для совместимых клиентов и ручного импорта.</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a></div>" if json_exists else ""}
     <div class="connect-footer">
       <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
     </div>
