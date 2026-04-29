@@ -1313,6 +1313,20 @@ function hideQrModal(){
 document.addEventListener('keydown', function(e){
   if(e.key === 'Escape') hideQrModal();
 });
+document.addEventListener('DOMContentLoaded', function(){
+  const codeInput = document.querySelector('input[name="code"]');
+  if(!codeInput) return;
+  const queryCode = new URLSearchParams(window.location.search).get('code') || '';
+  const hashCode = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('code') || '';
+  const code = queryCode || hashCode;
+  if(code && !codeInput.value){
+    codeInput.value = code;
+  }
+  const copyBtn = document.querySelector('button[data-copy]');
+  if(copyBtn && code && !((copyBtn.dataset.copy || '').trim())){
+    copyBtn.dataset.copy = code;
+  }
+});
 
 </script>
 """
@@ -1654,7 +1668,7 @@ class Handler(BaseHTTPRequestHandler):
             code = (form.get("code", [""])[0] or "").strip()
             user = find_user_by_code(code)
             if not user:
-                return self.send_html(render_login("Неверный код доступа."))
+                return self.send_html(render_login("Неверный код доступа.", prefill_code=code))
             slug = str(user.get("slug", ""))
             return self.redirect("./", headers=self.make_cookie_header(slug))
 
