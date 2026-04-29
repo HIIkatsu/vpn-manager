@@ -185,7 +185,10 @@ def handle_callback(data):
             return "⚠️ User not found or stale menu.", None
         name = str(user.get('name', '')).strip() or slug
         if kind == 'i':
-            return handle(f"/invite {slug}"), {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
+            settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
+            text, kb = build_invite_message(user, settings)
+            kb["inline_keyboard"].extend([[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]])
+            return text, kb
         if kind == 'c':
             return compact_check_text(user), {"inline_keyboard": [[{"text": "⬅️ Back", "callback_data": f"u:d:{slug}"}], [{"text": "📋 Users", "callback_data": f"u:p:{page}"}]]}
         return f"⚠️ Confirm reissue for <b>{html.escape(name)}</b>?", {"inline_keyboard": [[{"text": "✅ Confirm", "callback_data": f"u:rc:{slug}:{page}"}, {"text": "Cancel", "callback_data": f"u:d:{slug}"}]]}
@@ -441,12 +444,7 @@ def handle(text):
         if len(matches) > 1:
             return '❌ Multiple matches:\n' + '\n'.join(f'• {html.escape(_format_user(u))}' for u in matches)
         user = matches[0]
-        slug = str(user.get('slug', '')).strip()
-        code = str(load_access_codes().get(slug, '')).strip().upper() or 'N/A'
-        url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
-        name = str(user.get('name', '')).strip() or slug
-        pre = f"🔐 VPN доступ — {name}\n\nСтраница подключения:\n{url}\n\nКод доступа: {code}"
-        return f"🔗 <b>Invite for {html.escape(name)}</b>\n\nСтраница:\n<code>{html.escape(url)}</code>\n\nКод:\n<code>{html.escape(code)}</code>\n\n{safe_pre(pre)}"
+        return build_invite_message(user, settings)[0]
     if cmd == '/check' and not arg:
         return 'Usage: /check <name or slug>\nExample: /check alise'
     if cmd == '/check' and arg:
@@ -516,6 +514,23 @@ def handle(text):
         body = o if o else e
         return ('✅ Backup done\n' if c == 0 else '❌ Backup failed\n') + safe_pre(body[:2500])
     return '❓ Unknown command'
+
+
+def build_invite_message(user, settings):
+    slug = str(user.get('slug', '')).strip()
+    code = str(load_access_codes().get(slug, '')).strip().upper() or 'N/A'
+    url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
+    name = str(user.get('name', '')).strip() or slug
+    pre = f"🔐 VPN доступ — {name}\n\nСтраница подключения:\n{url}\n\nКод доступа: {code}"
+    text = (
+        f"🔗 <b>Invite for {html.escape(name)}</b>\n\nСтраница:\n<code>{html.escape(url)}</code>\n\n"
+        f"Код:\n<code>{html.escape(code)}</code>\n\n{safe_pre(pre)}"
+    )
+    kb = {"inline_keyboard": [[
+        {"text": "📋 Скопировать код", "copy_text": {"text": code}},
+        {"text": "🌐 Открыть страницу", "url": url},
+    ]]}
+    return text, kb
 
 
 def main():
@@ -628,6 +643,17 @@ def main():
                     msg_text, kb = render_users_page(0)
                     api(token, 'sendMessage', {'chat_id': chat_id, 'text': msg_text, 'parse_mode': 'HTML', 'reply_markup': json.dumps(kb)})
                     continue
+                if text.strip().startswith('/invite '):
+                    response = handle(text)
+                    if response == '❌ User not found' or response.startswith('❌ Multiple matches:'):
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': response, 'parse_mode': 'HTML'})
+                        continue
+                    invite_arg = text.strip().split(maxsplit=1)[1]
+                    matches, _ = _resolve_users(invite_arg)
+                    if matches:
+                        msg_text, kb = build_invite_message(matches[0], settings)
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': msg_text, 'parse_mode': 'HTML', 'reply_markup': json.dumps(kb)})
+                        continue
                 for chunk in split_html_message(handle(text)):
                     api(token, 'sendMessage', {'chat_id': chat_id, 'text': chunk, 'parse_mode': 'HTML'})
         except Exception:

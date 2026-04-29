@@ -317,6 +317,7 @@ def render_pending_modal_parts(pending, csrf):
         "toggle:enable": "Включён профиль",
         "toggle:disable": "Отключён профиль",
         "add": "Добавлен профиль",
+        "reissue": "Перевыпущен профиль",
         "rotate-code": "Обновлён код",
     }
 
