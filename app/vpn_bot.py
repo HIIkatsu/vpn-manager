@@ -104,29 +104,53 @@ def safe_pre(text):
 def format_status():
     rc, out, _ = run(['python3', str(BASE / 'app' / 'vpn_health.py'), '--json'])
     if rc != 0 and not out:
-        return '❌ <b>VPN status</b>\n\nНе удалось получить health-check.'
+        return '❌ <b>VPN status</b>\n\n❌ <b>Result</b>\nUnable to get health-check output.'
     rep = json.loads(out)
     checks = rep.get('checks', {})
     services, ports = checks.get('services', {}), checks.get('ports', {})
     http_c, routing, users = checks.get('http', {}), checks.get('routing_json', {}), checks.get('users', {})
-    lines = ['✅ <b>VPN status</b>', '', '<b>Services</b>']
+    lines = ['✅ <b>VPN status</b>', '', '⚙️ <b>Services</b>']
     for key, label in [('xray', 'Xray'), ('nginx', 'Nginx'), ('vpn-admin', 'Admin'), ('vpn-user', 'User page')]:
         ok = services.get(key, {}).get('ok', False)
-        status = services.get(key, {}).get('status', 'unknown')
-        lines.append(f"{'✅' if ok else '❌'} {label}: {html.escape(status)}")
-    lines += ['', '<b>Ports</b>']
-    for p in ['443', '8443', '10085', '8010', '8011']:
-        lines.append(f"{'✅' if ports.get(p, {}).get('ok', False) else '❌'} {p}")
+        status = html.escape(services.get(key, {}).get('status', 'unknown'))
+        lines.append(f"{'❌ ' if not ok else ''}{label}: <code>{status}</code>")
+    lines += ['', '🔌 <b>Ports</b>']
+    for port in ['443', '8443', '10085', '8010', '8011']:
+        ok = ports.get(port, {}).get('ok', False)
+        lines.append(f"{'❌ ' if not ok else ''}{port}: <code>{'LISTEN' if ok else 'NOT LISTEN'}</code>")
     admin_ok = http_c.get('admin', {}).get('ok', False)
-    user_status = http_c.get('user', {}).get('status', 'error').replace('HTTP ', '')
-    lines += ['', '<b>HTTP</b>', '🔒 Admin: protected, alive' if admin_ok else '❌ Admin: failed', f"{'✅' if http_c.get('user', {}).get('ok', False) else '❌'} User page: {html.escape(user_status)}", f"{'✅' if routing.get('ok', False) else '❌'} routing.json: {'valid' if routing.get('ok', False) else 'invalid'}"]
-    lines += ['', '<b>Users</b>']
+    user_ok = http_c.get('user', {}).get('ok', False)
+    user_status = html.escape(str(http_c.get('user', {}).get('status', 'error')).replace('HTTP ', ''))
+    routing_ok = routing.get('ok', False)
+    lines += ['', '🌐 <b>HTTP</b>', f"{'❌ ' if not admin_ok else ''}Admin: <code>{'protected, alive' if admin_ok else 'failed'}</code>", f"{'❌ ' if not user_ok else ''}User page: <code>{user_status}</code>", f"{'❌ ' if not routing_ok else ''}routing.json: <code>{'valid' if routing_ok else 'invalid'}</code>"]
+    lines += ['', '👥 <b>Users</b>']
     for slug, info in users.items():
         ok = info.get('ok', False)
-        lines.append(f"{'✅' if ok else '❌'} {html.escape(slug)}: txt/json/xray {'OK' if ok else 'FAIL'}")
-    lines += ['', '<b>Result</b>', '✅ System looks healthy' if rep.get('ok') else '❌ Issues found']
+        lines.append(f"{'❌ ' if not ok else ''}{html.escape(slug)}: <code>{'OK' if ok else 'FAIL'}</code>")
+    healthy = bool(rep.get('ok'))
+    lines += ['', f"{'✅' if healthy else '❌'} <b>Result</b>", 'System looks healthy' if healthy else 'Issues found']
     return '\n'.join(lines)
 
+
+
+
+def split_html_message(text, limit=3500):
+    if len(text) <= limit:
+        return [text]
+    chunks, current = [], []
+    current_len = 0
+    for line in text.split('\n'):
+        add = len(line) + (1 if current else 0)
+        if current and current_len + add > limit:
+            chunks.append('\n'.join(current))
+            current = [line]
+            current_len = len(line)
+        else:
+            current.append(line)
+            current_len += add
+    if current:
+        chunks.append('\n'.join(current))
+    return chunks
 
 def handle(text):
     parts = text.strip().split()
@@ -180,9 +204,44 @@ def handle(text):
         routing = subdir / 'routing.json'
         routing_ok = routing.exists()
         if routing_ok:
-            try: json.loads(routing.read_text(encoding='utf-8'))
-            except Exception: routing_ok = False
-        return '\n'.join([f"🔍 <b>Check {html.escape(name)}</b> <code>{html.escape(slug)}</code>", '', '✅ users.json: found', f"{'✅' if txt else '❌'} subscription txt: {'exists' if txt else 'missing'}", f"{'✅' if js else '❌'} subscription json: {'exists' if js else 'missing'}", f"{'✅' if p443 else '❌'} 443 txt/json: {'exists' if p443 else 'missing'}", f"{'✅' if p8443 else '❌'} 8443 txt/json: {'exists' if p8443 else 'missing'}", f"{'✅' if routing_ok else '❌'} routing.json: {'exists, valid' if routing_ok else 'missing/invalid'}"])
+            try:
+                json.loads(routing.read_text(encoding='utf-8'))
+            except Exception:
+                routing_ok = False
+        client_present = False
+        try:
+            xcfg = json.loads((BASE / 'xray' / 'config.json').read_text(encoding='utf-8'))
+            for inbound in xcfg.get('inbounds', []):
+                for client in inbound.get('settings', {}).get('clients', []):
+                    if str(client.get('email', '')).strip() == slug:
+                        client_present = True
+                        break
+                if client_present:
+                    break
+        except Exception:
+            client_present = False
+
+        required_ok = txt and js and routing_ok and client_present
+        return '\n'.join([
+            f"🔍 <b>Check {html.escape(name)}</b>",
+            f"<code>{html.escape(slug)}</code>",
+            '',
+            '📁 <b>Required files</b>',
+            'users.json: <code>found</code>',
+            f"{'❌ ' if not txt else ''}subscription txt: <code>{'exists' if txt else 'missing'}</code>",
+            f"{'❌ ' if not js else ''}subscription json: <code>{'exists' if js else 'missing'}</code>",
+            f"{'❌ ' if not routing_ok else ''}routing.json: <code>{'exists, valid' if routing_ok else 'missing/invalid'}</code>",
+            '',
+            '🧩 <b>Xray</b>',
+            f"{'❌ ' if not client_present else ''}client: <code>{'present' if client_present else 'missing'}</code>",
+            '',
+            '🟡 <b>Optional fallback files</b>',
+            f"443 txt/json: <code>{'exists' if p443 else 'missing optional'}</code>",
+            f"8443 txt/json: <code>{'exists' if p8443 else 'missing optional'}</code>",
+            '',
+            f"{'✅' if required_ok else '❌'} <b>Result</b>",
+            'User profile looks OK' if required_ok else 'Required items are missing',
+        ])
     if cmd == '/backup':
         c, o, e = run(['python3', str(BASE / 'app' / 'vpn_backup.py')])
         body = o if o else e
@@ -205,7 +264,8 @@ def main():
                 if not allowed(chat_id, cfg):
                     api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Access denied', 'parse_mode': 'HTML'})
                     continue
-                api(token, 'sendMessage', {'chat_id': chat_id, 'text': handle(text), 'parse_mode': 'HTML'})
+                for chunk in split_html_message(handle(text)):
+                    api(token, 'sendMessage', {'chat_id': chat_id, 'text': chunk, 'parse_mode': 'HTML'})
         except Exception:
             traceback.print_exc()
             time.sleep(2)
