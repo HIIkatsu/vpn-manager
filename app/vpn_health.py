@@ -34,9 +34,10 @@ def service_status(name):
 def http_ok(url):
     try:
         with urllib.request.urlopen(url, timeout=4) as r:
-            return 200 <= r.status < 500, f'HTTP {r.status}'
+            ok = 200 <= r.status < 500
+            return ok, f'HTTP {r.status}', r.status
     except Exception as e:
-        return False, str(e)
+        return False, str(e), None
 
 
 def user_path(settings):
@@ -64,9 +65,9 @@ def run_check():
     ports = {str(p): {'ok': is_port_listening(p)} for p in PORTS}
     report['checks']['ports'] = ports
 
-    admin_ok, admin_msg = http_ok(f'https://{domain}/vpn-admin/')
-    user_ok, user_msg = http_ok(f'https://{domain}/{user_path(settings)}/')
-    report['checks']['http'] = {'admin': {'ok': admin_ok, 'status': admin_msg}, 'user': {'ok': user_ok, 'status': user_msg}}
+    admin_ok, admin_msg, admin_code = http_ok(f'https://{domain}/vpn-admin/')
+    user_ok, user_msg, user_code = http_ok(f'https://{domain}/{user_path(settings)}/')
+    report['checks']['http'] = {'admin': {'ok': admin_ok, 'status': admin_msg, 'code': admin_code}, 'user': {'ok': user_ok, 'status': user_msg, 'code': user_code}}
 
     route_ok = False
     route_msg = 'missing'
@@ -99,6 +100,7 @@ def run_check():
         txt = subdir / f'{slug}.txt'
         jsn = subdir / f'{slug}.json'
         users[slug] = {
+            'name': u.get('name', ''),
             'txt_exists': txt.exists(),
             'json_exists': jsn.exists(),
             'xray_client_exists': slug in xray_clients,
