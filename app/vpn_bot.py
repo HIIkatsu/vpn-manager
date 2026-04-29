@@ -519,7 +519,8 @@ def handle(text):
 def build_invite_message(user, settings):
     slug = str(user.get('slug', '')).strip()
     code = str(load_access_codes().get(slug, '')).strip().upper() or 'N/A'
-    url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
+    code_q = urllib.parse.quote(code, safe='')
+    url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1&code={code_q}"
     name = str(user.get('name', '')).strip() or slug
     pre = f"🔐 VPN доступ — {name}\n\nСтраница подключения:\n{url}\n\nКод доступа: {code}"
     text = (
