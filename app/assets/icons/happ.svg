@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Happ icon">
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="#283759"/>
+  <rect x="17" y="17" width="30" height="30" rx="8" fill="none" stroke="#e5edff" stroke-width="4"/>
+  <path d="M23 22v20M41 22v20M23 32h18" stroke="#e5edff" stroke-width="4" stroke-linecap="round"/>
+</svg>
