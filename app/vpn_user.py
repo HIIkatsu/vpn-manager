@@ -1372,8 +1372,7 @@ async function openHiddify(){
   const copied = await copyHiddifySubscription('Ссылка подключения скопирована. Если Hiddify не открылся — вставьте ссылку вручную.');
   if(!copied) return;
   const profileUrl = (window.__hiddifyLink || '').trim();
-  const profileName = (window.__hiddifyProfileName || 'NeuroVPN').trim() || 'NeuroVPN';
-  const deepLink = 'hiddify://import/' + profileUrl + '#' + encodeURIComponent(profileName);
+  const deepLink = 'hiddify://import/' + profileUrl;
   window.location.href = deepLink;
 }
 
