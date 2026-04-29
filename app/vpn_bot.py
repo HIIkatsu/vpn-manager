@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-import json, secrets, subprocess, time, urllib.parse, urllib.request
+import json, os, re, secrets, subprocess, time, unicodedata, urllib.parse, urllib.request
 from pathlib import Path
 
-BASE = Path('/root/vpn-manager')
+VPN_MANAGER_HOME = Path(os.environ.get('VPN_MANAGER_HOME', '/root/vpn-manager'))
+BASE = VPN_MANAGER_HOME
 CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
 PENDING = {}
@@ -38,6 +39,42 @@ def user_stats(slug):
             data['last'][et]=e.get('ts')
     return data
 
+
+
+def _latin_alias(value):
+    table = {
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z','и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r','с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh','щ':'sch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+    }
+    out=[]
+    for ch in str(value).lower():
+        out.append(table.get(ch,ch))
+    alias=''.join(out)
+    alias=unicodedata.normalize('NFKD', alias).encode('ascii','ignore').decode('ascii')
+    alias=re.sub(r'[^a-z0-9]+','',alias)
+    return alias
+
+
+def _resolve_users(query):
+    users=json.loads((BASE/'users.json').read_text(encoding='utf-8')).get('users',[])
+    q=str(query).strip()
+    if not q:
+        return [], users
+    q_l=q.lower()
+    q_alias=_latin_alias(q)
+    matches=[]
+    for u in users:
+        slug=str(u.get('slug','')).strip()
+        name=str(u.get('name','')).strip()
+        candidates={slug.lower(), name.lower(), _latin_alias(name), _latin_alias(slug)}
+        if q_l in candidates or (q_alias and q_alias in candidates):
+            matches.append(u)
+    return matches, users
+
+
+def _format_user(u):
+    name=str(u.get('name','')).strip()
+    slug=str(u.get('slug','')).strip()
+    return f"{name} ({slug})" if name else slug
 def handle(text):
     parts=text.strip().split()
     cmd=parts[0] if parts else ''
@@ -47,16 +84,34 @@ def handle(text):
         c,o,e=run(['python3','/root/vpn-manager/app/vpn_health.py'])
         return (o+'\n'+e).strip()[:3500]
     if cmd=='/users':
-        u=json.loads((BASE/'users.json').read_text())['users']
+        users=json.loads((BASE/'users.json').read_text(encoding='utf-8')).get('users',[])
         lines=[]
-        for x in u:
-            s=user_stats(x['slug'])
-            lines.append(f"{x['slug']}: open={s['opened']} login={s['logged_in']} copied={s['copied']}")
+        for x in users:
+            slug=str(x.get('slug','')).strip()
+            if not slug:
+                continue
+            s=user_stats(slug)
+            lines.append(f"{_format_user(x)}: open={s['opened']} login={s['logged_in']} copied={s['copied']}")
         return '\n'.join(lines) or 'No users'
     if cmd=='/invite' and arg:
-        return f"https://{json.loads((BASE/'settings.json').read_text())['domain']}/vpn-user-vpn/?invite=1\nslug={arg}"
+        settings=json.loads((BASE/'settings.json').read_text(encoding='utf-8'))
+        matches,_=_resolve_users(arg)
+        if not matches:
+            return 'User not found'
+        if len(matches)>1:
+            return 'Multiple matches:\n' + '\n'.join(f'- {_format_user(u)}' for u in matches) + '\nPlease be more specific.'
+        user=matches[0]
+        path=str(settings.get('public_user_path','')).strip('/')
+        if not path:
+            path='vpn-user-vpn'
+        return f"https://{settings['domain']}/{path}/?invite=1\nslug={user['slug']}"
     if cmd=='/check' and arg:
-        c,o,e=run(['vpn-manager','check-user',arg]); return (o+'\n'+e)[:3500]
+        matches,_=_resolve_users(arg)
+        if not matches:
+            return 'User not found'
+        if len(matches)>1:
+            return 'Multiple matches:\n' + '\n'.join(f'- {_format_user(u)}' for u in matches) + '\nPlease be more specific.'
+        c,o,e=run(['vpn-manager','check-user',matches[0]['slug']]); return (o+'\n'+e)[:3500]
     if cmd=='/backup':
         c,o,e=run(['python3','/root/vpn-manager/app/vpn_backup.py']); return (o+'\n'+e)[:3500]
     if cmd=='/repair':

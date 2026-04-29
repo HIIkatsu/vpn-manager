@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import argparse, tarfile
+import argparse, os, tarfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-BASE = Path('/root/vpn-manager')
+VPN_MANAGER_HOME = Path(os.environ.get('VPN_MANAGER_HOME', '/root/vpn-manager'))
+BASE = VPN_MANAGER_HOME
 BACKUP_DIR = BASE / 'backups' / 'daily'
 KEEP_DAYS = 14
 PROTECT_MARKERS = ('STABLE', 'manual', 'before-', 'codex')
