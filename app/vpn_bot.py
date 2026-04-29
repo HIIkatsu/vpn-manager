@@ -9,8 +9,11 @@ CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
 ACCESS = BASE / 'user_access.json'
 USER_SESSIONS = BASE / 'bot_user_sessions.json'
+USER_CODE_GUARD = BASE / 'bot_user_code_guard.json'
 PENDING = {}
 USERS_PAGE_SIZE = 6
+MAX_CODE_FAILS = 5
+CODE_COOLDOWN_SECONDS = 600
 
 
 def load_cfg():
@@ -248,6 +251,51 @@ def bind_user(chat_id, slug):
     save_user_sessions(sessions)
 
 
+def load_code_guard():
+    if not USER_CODE_GUARD.exists():
+        return {}
+    try:
+        data = json.loads(USER_CODE_GUARD.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_code_guard(data):
+    USER_CODE_GUARD.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def _guard_state(chat_id):
+    return load_code_guard().get(str(chat_id), {'fails': 0, 'cooldown_until': 0})
+
+
+def code_cooldown_left(chat_id, now_ts=None):
+    now_ts = int(now_ts if now_ts is not None else time.time())
+    state = _guard_state(chat_id)
+    return max(0, int(state.get('cooldown_until', 0)) - now_ts)
+
+
+def mark_code_failure(chat_id, now_ts=None):
+    now_ts = int(now_ts if now_ts is not None else time.time())
+    data = load_code_guard()
+    key = str(chat_id)
+    state = data.get(key, {'fails': 0, 'cooldown_until': 0})
+    if int(state.get('cooldown_until', 0)) > now_ts:
+        return
+    fails = int(state.get('fails', 0)) + 1
+    cooldown_until = now_ts + CODE_COOLDOWN_SECONDS if fails >= MAX_CODE_FAILS else 0
+    data[key] = {'fails': 0 if cooldown_until else fails, 'cooldown_until': cooldown_until}
+    save_code_guard(data)
+
+
+def clear_code_failures(chat_id):
+    data = load_code_guard()
+    key = str(chat_id)
+    if key in data:
+        del data[key]
+        save_code_guard(data)
+
+
 def user_menu_text(user):
     name = str(user.get('name', '')).strip() or str(user.get('slug', '')).strip()
     status = 'available' if user.get('enabled', True) else 'disabled'
@@ -257,6 +305,8 @@ def user_menu_text(user):
         f'Profile: <b>{html.escape(name)}</b>',
         f'Status: <b>{html.escape(status)}</b>',
         f'Location: <b>{html.escape(location)}</b>',
+        '',
+        'Open connection page and enter your access code.',
     ])
 
 
@@ -467,7 +517,9 @@ def main():
                     data = cb.get('data', '')
                     if not chat_id:
                         continue
-                    if not allowed(chat_id, cfg):
+                    is_admin = allowed(chat_id, cfg)
+                    if not is_admin:
+                        # Explicit admin callback guard for non-admin users.
                         if data.startswith('u:'):
                             api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Forbidden'})
                             continue
@@ -512,6 +564,10 @@ def main():
                 if not chat_id or not text:
                     continue
                 if not allowed(chat_id, cfg):
+                    chat_type = str(m.get('chat', {}).get('type', ''))
+                    if chat_type != 'private':
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Open this bot in private chat.', 'parse_mode': 'HTML'})
+                        continue
                     user = find_user(get_bound_slug(chat_id))
                     settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
                     cmd = text.strip().split()[0]
@@ -525,10 +581,16 @@ def main():
                         if cmd.startswith('/'):
                             api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Please send your access code first.', 'parse_mode': 'HTML'})
                             continue
+                        cooldown_left = code_cooldown_left(chat_id)
+                        if cooldown_left > 0:
+                            api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Too many invalid codes. Please wait 10 minutes and try again.', 'parse_mode': 'HTML'})
+                            continue
                         matched = resolve_user_by_code(text)
                         if not matched:
+                            mark_code_failure(chat_id)
                             api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Invalid code. Please try again or contact admin.', 'parse_mode': 'HTML'})
                             continue
+                        clear_code_failures(chat_id)
                         bind_user(chat_id, str(matched.get('slug', '')))
                         api(token, 'sendMessage', {'chat_id': chat_id, 'text': '✅ Access code accepted.', 'parse_mode': 'HTML'})
                         api(token, 'sendMessage', {'chat_id': chat_id, 'text': user_menu_text(matched), 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))})
