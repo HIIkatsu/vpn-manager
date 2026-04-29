@@ -368,7 +368,8 @@ def public_user_invite_url(settings, access_code=""):
     code = str(access_code or "").strip()
     if not code:
         return base_url
-    return f"{base_url}&code={quote(code, safe='')}"
+    code_q = quote(code, safe="")
+    return f"{base_url}&code={code_q}#code={code_q}"
 
 
 def subscription_base(settings):
@@ -2073,9 +2074,10 @@ def render(message="", log="", csrf=""):
         masked_page = short(user_page_url, 36, 16)
         masked_sub = short(link, 36, 16)
 
+        invite_user_page_url = public_user_invite_url(settings, access_code)
         invite_text = (
             f"🔐 VPN доступ — {name}\\n\\n"
-            f"Страница подключения:\\n{user_page_url}\\n\\n"
+            f"Страница подключения:\\n{invite_user_page_url}\\n\\n"
             f"Код доступа: {access_code}\\n\\n"
             "Если ссылка не открылась, откройте её в браузере вручную.\\n"
         )
@@ -2765,7 +2767,8 @@ class Handler(BaseHTTPRequestHandler):
 
             if kind == "invite":
                 codes = load_access_codes()
-                text = f"Страница подключения: {public_user_invite_url(settings)}\nКод доступа: {codes.get(slug, '')}"
+                code = codes.get(slug, "")
+                text = f"Страница подключения: {public_user_invite_url(settings, code)}\nКод доступа: {code}"
 
             svg = qr_svg(text)
             self.send_bytes(svg, "image/svg+xml; charset=utf-8")
