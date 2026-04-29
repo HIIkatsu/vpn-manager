@@ -1452,6 +1452,8 @@ def render_profile(slug: str):
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
     fallback_json_exists = (subscription_dir(settings) / f"{slug}-8443.json").exists()
     fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
+    profile_link = json_link if json_exists else subscription_link
+    profile_link_js = json.dumps(profile_link, ensure_ascii=False)
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1603,7 +1605,7 @@ def render_profile(slug: str):
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script>window.__profileLink = "{esc(json_link if json_exists else subscription_link)}";</script>
+<script>window.__profileLink = {profile_link_js};</script>
 {JS}
 </body>
 </html>"""
