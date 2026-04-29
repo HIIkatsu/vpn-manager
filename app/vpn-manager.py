@@ -37,6 +37,7 @@ BACKUPS = BASE / "backups"
 
 XRAY_CONFIG = Path("/usr/local/etc/xray/config.json")
 NGINX_SNIPPET = Path("/etc/nginx/snippets/vpn-subscriptions.conf")
+NGINX_USER_PAGES_SNIPPET = Path("/etc/nginx/snippets/vpn-user-pages.conf")
 
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,31}$")
 
@@ -361,6 +362,30 @@ def write_json(path: Path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     os.chmod(path, 0o644)
 
+
+def public_user_path(settings):
+    sub = str(settings.get("subscription_path", "vpn")).strip("/")
+    if sub.startswith("vpn-"):
+        return "vpn-user-" + sub.split("vpn-", 1)[1]
+    return sub + "-user"
+
+
+def build_user_pages_snippet(settings):
+    path = public_user_path(settings)
+    return f"""location = /{path} {{
+    return 308 /{path}/;
+}}
+
+location /{path}/ {{
+    proxy_pass http://127.0.0.1:8011/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}}
+"""
+
 def build_snippet(settings, routes):
     routing_b64 = build_client_routing(routes)
     profile_title = settings.get("profile_title", "NeuroSMM VPN")
@@ -440,7 +465,7 @@ def backup(settings):
     BACKUPS.mkdir(parents=True, exist_ok=True)
     backup_dir = BACKUPS / now()
     backup_dir.mkdir(parents=True, exist_ok=True)
-    for path in [XRAY_CONFIG, NGINX_SNIPPET, SETTINGS, USERS, ROUTES]:
+    for path in [XRAY_CONFIG, NGINX_SNIPPET, NGINX_USER_PAGES_SNIPPET, SETTINGS, USERS, ROUTES]:
         if path.exists():
             shutil.copy2(path, backup_dir / path.name)
     subdir = Path(settings["subscription_dir"])
@@ -509,6 +534,7 @@ def apply_config(dry_run=False):
 
     xray_config = build_xray(settings, users_doc)
     snippet = build_snippet(settings, routes)
+    user_pages_snippet = build_user_pages_snippet(settings)
     test_xray_config(xray_config)
     print(f"Enabled users: {len(enabled_users(users_doc))}/{len(users_list(users_doc))}")
     print(f"Client routing base64 length: {len(build_client_routing(routes))}")
@@ -519,15 +545,22 @@ def apply_config(dry_run=False):
 
     old_xray = XRAY_CONFIG.read_text(encoding="utf-8") if XRAY_CONFIG.exists() else ""
     old_snippet = NGINX_SNIPPET.read_text(encoding="utf-8") if NGINX_SNIPPET.exists() else ""
+    old_user_pages_snippet = (
+        NGINX_USER_PAGES_SNIPPET.read_text(encoding="utf-8") if NGINX_USER_PAGES_SNIPPET.exists() else ""
+    )
 
     backup(settings)
 
     try:
         atomic_write_text(NGINX_SNIPPET, snippet)
+        if NGINX_USER_PAGES_SNIPPET.exists() or old_user_pages_snippet:
+            atomic_write_text(NGINX_USER_PAGES_SNIPPET, user_pages_snippet)
         sh(["nginx", "-t"], timeout=60)
     except Exception:
         if old_snippet:
             atomic_write_text(NGINX_SNIPPET, old_snippet)
+        if old_user_pages_snippet:
+            atomic_write_text(NGINX_USER_PAGES_SNIPPET, old_user_pages_snippet)
         raise
 
     try:
@@ -546,7 +579,9 @@ def apply_config(dry_run=False):
             sh(["systemctl", "restart", "xray"], check=False, timeout=120)
         if old_snippet:
             atomic_write_text(NGINX_SNIPPET, old_snippet)
-            sh(["nginx", "-t"], check=False, timeout=60)
+        if old_user_pages_snippet:
+            atomic_write_text(NGINX_USER_PAGES_SNIPPET, old_user_pages_snippet)
+        sh(["nginx", "-t"], check=False, timeout=60)
         raise
 
     write_subscriptions(settings, users_doc)
