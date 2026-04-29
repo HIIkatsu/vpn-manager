@@ -8,6 +8,7 @@ BASE = VPN_MANAGER_HOME
 CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
 ACCESS = BASE / 'user_access.json'
+USER_SESSIONS = BASE / 'bot_user_sessions.json'
 PENDING = {}
 USERS_PAGE_SIZE = 6
 
@@ -223,6 +224,82 @@ def load_access_codes():
     return data if isinstance(data, dict) else {}
 
 
+def load_user_sessions():
+    if not USER_SESSIONS.exists():
+        return {}
+    try:
+        data = json.loads(USER_SESSIONS.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_user_sessions(data):
+    USER_SESSIONS.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def get_bound_slug(chat_id):
+    return str(load_user_sessions().get(str(chat_id), '')).strip()
+
+
+def bind_user(chat_id, slug):
+    sessions = load_user_sessions()
+    sessions[str(chat_id)] = str(slug).strip()
+    save_user_sessions(sessions)
+
+
+def user_menu_text(user):
+    name = str(user.get('name', '')).strip() or str(user.get('slug', '')).strip()
+    status = 'available' if user.get('enabled', True) else 'disabled'
+    location = str(user.get('location', '')).strip() or 'Amsterdam · NL'
+    return '\n'.join([
+        '<b>NeuroVPN</b>',
+        f'Profile: <b>{html.escape(name)}</b>',
+        f'Status: <b>{html.escape(status)}</b>',
+        f'Location: <b>{html.escape(location)}</b>',
+    ])
+
+
+def user_menu_kb(settings):
+    url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
+    return {"inline_keyboard": [
+        [{"text": "Open connection page", "url": url}],
+        [{"text": "Get profile", "callback_data": "me:p"}, {"text": "Show access code", "callback_data": "me:c"}],
+        [{"text": "Check connection", "callback_data": "me:s"}, {"text": "Instructions", "callback_data": "me:i"}],
+        [{"text": "Help", "callback_data": "me:h"}],
+    ]}
+
+
+def user_safe_check(slug):
+    user = find_user(slug)
+    if not user:
+        return '❌ Profile not found.'
+    settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
+    subdir = Path(settings['subscription_dir'])
+    txt = (subdir / f'{slug}.txt').exists()
+    js = (subdir / f'{slug}.json').exists()
+    active = bool(user.get('enabled', True))
+    ok = txt and js and active
+    return '\n'.join([
+        '<b>Connection check</b>',
+        f"server: <b>{'works' if txt or js else 'check later'}</b>",
+        f"profile active: <b>{'yes' if active else 'no'}</b>",
+        f"profile files available: <b>{'yes' if txt and js else 'no'}</b>",
+        '',
+        f"{'✅' if ok else '⚠️'} {'Ready to use' if ok else 'Please contact admin'}",
+    ])
+
+
+def resolve_user_by_code(code):
+    normalized = str(code).strip().upper()
+    if not normalized:
+        return None
+    for slug, value in load_access_codes().items():
+        if str(value).strip().upper() == normalized:
+            return find_user(slug)
+    return None
+
+
 def safe_pre(text):
     return f"<pre>{html.escape(str(text), quote=True)}</pre>"
 
@@ -391,7 +468,34 @@ def main():
                     if not chat_id:
                         continue
                     if not allowed(chat_id, cfg):
-                        api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Access denied'})
+                        if data.startswith('u:'):
+                            api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Forbidden'})
+                            continue
+                        if not data.startswith('me:'):
+                            api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Forbidden'})
+                            continue
+                        slug = get_bound_slug(chat_id)
+                        user = find_user(slug) if slug else None
+                        if not user:
+                            api(token, 'answerCallbackQuery', {'callback_query_id': cq_id, 'text': 'Bind profile first'})
+                            continue
+                        settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
+                        if data == 'me:p':
+                            txt = f"<b>Profile URL</b>\n<code>{html.escape(str(user.get('subscription_url', 'n/a')))}</code>"
+                        elif data == 'me:c':
+                            code = str(load_access_codes().get(str(user.get('slug', '')), '')).strip().upper() or 'N/A'
+                            txt = f"<b>Your access code</b>\n<code>{html.escape(code)}</code>"
+                        elif data == 'me:s':
+                            txt = user_safe_check(str(user.get('slug', '')))
+                        elif data == 'me:i':
+                            txt = '<b>Instructions</b>\n1) Open your profile URL.\n2) Import into Happ, Hiddify, or v2rayNG.\n3) Connect and verify internet access.'
+                        elif data == 'me:h':
+                            txt = '<b>Help</b>\nPlease contact your VPN administrator for support.'
+                        else:
+                            txt = user_menu_text(user)
+                        payload = {'chat_id': chat_id, 'message_id': msg.get('message_id'), 'text': txt, 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))}
+                        api(token, 'editMessageText', payload)
+                        api(token, 'answerCallbackQuery', {'callback_query_id': cq_id})
                         continue
                     try:
                         text, kb = handle_callback(data)
@@ -408,7 +512,33 @@ def main():
                 if not chat_id or not text:
                     continue
                 if not allowed(chat_id, cfg):
-                    api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Access denied', 'parse_mode': 'HTML'})
+                    user = find_user(get_bound_slug(chat_id))
+                    settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
+                    cmd = text.strip().split()[0]
+                    if cmd == '/start':
+                        if user:
+                            api(token, 'sendMessage', {'chat_id': chat_id, 'text': user_menu_text(user), 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))})
+                        else:
+                            api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Welcome to <b>NeuroVPN</b>.\nSend your access code to continue.', 'parse_mode': 'HTML'})
+                        continue
+                    if not user:
+                        if cmd.startswith('/'):
+                            api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Please send your access code first.', 'parse_mode': 'HTML'})
+                            continue
+                        matched = resolve_user_by_code(text)
+                        if not matched:
+                            api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Invalid code. Please try again or contact admin.', 'parse_mode': 'HTML'})
+                            continue
+                        bind_user(chat_id, str(matched.get('slug', '')))
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': '✅ Access code accepted.', 'parse_mode': 'HTML'})
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': user_menu_text(matched), 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))})
+                        continue
+                    if cmd in ['/users', '/invite', '/check', '/backup', '/repair', '/reissue']:
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': 'Forbidden. User menu only.', 'parse_mode': 'HTML'})
+                    elif cmd == '/status':
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': user_safe_check(str(user.get('slug', ''))), 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))})
+                    else:
+                        api(token, 'sendMessage', {'chat_id': chat_id, 'text': user_menu_text(user), 'parse_mode': 'HTML', 'reply_markup': json.dumps(user_menu_kb(settings))})
                     continue
                 if text.strip().startswith('/users'):
                     msg_text, kb = render_users_page(0)
