@@ -30,14 +30,52 @@ VERSION = "vpn-user-ui-premium-compact-v6"
 TRAFFIC_SOFT_LIMIT = 1024 * 1024 * 1024  # 1 GB soft bar scale if user is alone
 
 ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+ICON_MANIFEST = ICON_DIR / "icon_manifest.json"
 
-def load_inline_svg(name: str):
+
+def load_local_icon(name: str):
     try:
-        raw = (ICON_DIR / name).read_text(encoding="utf-8").strip()
+        file_path = (ICON_DIR / name).resolve()
+        if ICON_DIR.resolve() not in file_path.parents:
+            return ""
     except Exception:
         return ""
-    cleaned = re.sub(r"<\?xml[^>]*>\s*", "", raw, flags=re.I)
-    return cleaned
+    ext = file_path.suffix.lower()
+    if ext == ".svg":
+        try:
+            raw = file_path.read_text(encoding="utf-8").strip()
+            return re.sub(r"<\?xml[^>]*>\s*", "", raw, flags=re.I)
+        except Exception:
+            return ""
+    mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}.get(ext)
+    if not mime:
+        return ""
+    try:
+        encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
+    except Exception:
+        return ""
+    return f"data:{mime};base64,{encoded}"
+
+
+def load_icon_set():
+    defaults = {
+        "hiddify": "hiddify.svg",
+        "happ": "happ.png",
+        "v2rayng": "v2rayng.png",
+        "nekobox": "nekobox.png",
+        "streisand": "streisand.png",
+    }
+    try:
+        manifest = load_json(ICON_MANIFEST, default={})
+    except Exception:
+        manifest = {}
+    icons = {}
+    for key, fallback in defaults.items():
+        icon_name = str(manifest.get(key) or fallback)
+        icon_data = load_local_icon(icon_name)
+        if icon_data:
+            icons[key] = icon_data
+    return icons
 
 
 def load_json(path: Path, default=None):
@@ -1240,29 +1278,30 @@ summary:active{
   box-shadow:0 18px 50px rgba(0,0,0,.4);padding:18px;
 }
 .connect-title{font-size:28px;font-weight:900;letter-spacing:-.02em}
-.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.4;max-width:56ch}
+.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.35;max-width:52ch}
 .app-card{margin-top:12px;border-radius:18px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.03);padding:14px}
-.app-card.recommended{background:linear-gradient(180deg,rgba(74,96,150,.2),rgba(255,255,255,.03));border-color:rgba(133,156,214,.45)}
+.app-card.recommended{background:linear-gradient(165deg,rgba(44,58,84,.86),rgba(19,27,42,.92));border-color:rgba(108,161,198,.45);box-shadow:inset 0 1px 0 rgba(165,220,255,.12)}
 .app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .app-head{display:flex;align-items:center;gap:10px}
 .app-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.18);background:linear-gradient(145deg,rgba(44,56,86,.95),rgba(23,31,54,.95));overflow:hidden}
-.app-avatar svg{width:100%;height:100%;display:block}
-.recommended .app-avatar{border-color:rgba(148,179,255,.34);background:linear-gradient(145deg,rgba(74,97,160,.95),rgba(34,47,83,.95))}
+.app-avatar svg,.app-avatar img{width:100%;height:100%;display:block;object-fit:cover}
+.app-icon-fallback{font-weight:700;font-size:16px;color:#dbe8ff}
+.recommended .app-avatar{border-color:rgba(108,172,214,.42);background:linear-gradient(145deg,rgba(51,73,109,.95),rgba(26,38,62,.95))}
 .app-pill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 12px}
 .app-icons{display:contents}
 .mini-app{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;min-width:0}
-.mini-app svg{width:18px;height:18px;display:block;opacity:.98;flex:0 0 auto}
-.manual-section{margin-top:10px;padding:10px 11px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02)}
+.mini-app svg,.mini-app img{width:18px;height:18px;display:block;opacity:.98;flex:0 0 auto}
+.manual-section{margin-top:10px;padding:11px;border-radius:12px;border:1px solid rgba(142,178,228,.24);background:linear-gradient(180deg,rgba(93,122,172,.12),rgba(255,255,255,.02))}
 .manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#aebcdf;margin:0 0 8px}
-.json-pill{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:13px;font-weight:700;text-decoration:none}
-.advanced-note{margin-top:6px;font-size:12px;color:#aebcdf}
+.json-pill{display:flex;align-items:center;justify-content:center;width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:14px;font-weight:700;text-decoration:none}
+.advanced-note{margin-top:6px;font-size:12px;color:#aebcdf;line-height:1.35}
 .app-name{font-size:19px;font-weight:800}
 .app-badge{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(139,181,255,.15);border:1px solid rgba(139,181,255,.34);color:#dce9ff}
 .app-text{font-size:15px;line-height:1.4;color:#d2defc;margin:0 0 12px;max-width:54ch}
 .app-hint{margin-top:8px;font-size:12px;color:#cbd8ff;line-height:1.35}
 .big-btn.full{width:100%;display:flex;align-items:center;justify-content:center}
 .connect-footer{display:flex;justify-content:flex-end;margin-top:14px}
-@media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
+@media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}.connect-footer{justify-content:stretch}.connect-footer .copy-btn{width:100%}}
 
 </style>
 """
@@ -1497,11 +1536,21 @@ def render_profile(slug: str):
     hiddify_link_js = json.dumps(hiddify_link, ensure_ascii=False)
     hiddify_profile_name_js = json.dumps(hiddify_profile_name, ensure_ascii=False)
 
-    hiddify_icon = load_inline_svg("hiddify.svg")
-    happ_icon = load_inline_svg("happ.svg")
-    v2rayng_icon = load_inline_svg("v2rayng.svg")
-    nekobox_icon = load_inline_svg("nekobox.svg")
-    streisand_icon = load_inline_svg("streisand.svg")
+    icon_set = load_icon_set()
+
+    def icon_markup(icon_key: str, alt_text: str):
+        icon_value = icon_set.get(icon_key, "")
+        if not icon_value:
+            return f"<span class='app-icon-fallback'>{esc(alt_text[:1])}</span>"
+        if icon_value.startswith("data:"):
+            return f"<img src='{icon_value}' alt='' loading='lazy' decoding='async'>"
+        return icon_value
+
+    hiddify_icon = icon_markup("hiddify", "Hiddify")
+    happ_icon = icon_markup("happ", "Happ")
+    v2rayng_icon = icon_markup("v2rayng", "v2rayNG")
+    nekobox_icon = icon_markup("nekobox", "NekoBox")
+    streisand_icon = icon_markup("streisand", "Streisand")
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1628,26 +1677,26 @@ def render_profile(slug: str):
 <div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
   <div class="connect-card">
     <div class="connect-title">Подключение VPN</div>
-    <div class="connect-sub">Рекомендуем Hiddify для быстрого импорта. Если не сработает — скопируйте ссылку для другого приложения.</div>
+    <div class="connect-sub">Рекомендуем Hiddify. Если не сработает — скопируйте ссылку.</div>
 
     <div class="app-card recommended">
       <div class="app-top">
         <div class="app-head"><div class="app-avatar" aria-hidden="true">{hiddify_icon}</div><div class="app-name">Hiddify</div></div>
         <div class="app-badge">Рекомендуется</div>
       </div>
-      <p class="app-text">Быстрый импорт профиля в один шаг.</p>
+      <p class="app-text">Быстрый импорт профиля.</p>
       <button type="button" class="big-btn primary" onclick="openHiddify()">Открыть в Hiddify</button>
-      <div class="app-hint">Если автоимпорт не сработал — используйте импорт из буфера.</div>
+      <div class="app-hint">Если не открылось — используйте импорт из буфера.</div>
     </div>
 
     <div class="app-card">
       <div class="app-top">
         <div class="app-head"><div class="app-name">Другие приложения</div></div>
       </div>
-      <p class="app-text">Импортируйте ссылку в удобное приложение.</p>
+      <p class="app-text">Скопируйте ссылку и импортируйте её в клиент.</p>
       <div class="app-pill-grid" aria-hidden="true"><div class="mini-app">{happ_icon}Happ</div><div class="mini-app">{v2rayng_icon}v2rayNG</div><div class="mini-app">{nekobox_icon}NekoBox</div><div class="mini-app">{streisand_icon}Streisand</div></div>
-      <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">📋 Скопировать ссылку</button>
-      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a><div class='advanced-note'>Скачайте файл для ручного импорта, если автоимпорт недоступен.</div></div>" if json_exists else ""}
+      <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">Скопировать ссылку</button>
+      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>JSON-конфиг</a><div class='advanced-note'>Для ручного импорта.</div></div>" if json_exists else ""}
     </div>
     <div class="connect-footer">
       <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
