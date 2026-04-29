@@ -379,7 +379,7 @@ def build_user_pages_snippet(settings):
     path = public_user_path(settings)
     domain = str(settings["domain"]).strip("/")
     return f"""location = /{path} {{
-    return 308 https://{domain}/{path}/;
+    return 302 https://{domain}/{path}/;
 }}
 
 location /{path}/ {{
