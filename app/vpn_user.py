@@ -1318,8 +1318,15 @@ document.addEventListener('keydown', function(e){
 """
 
 
-def render_login(error=""):
+def render_login(error="", prefill_code=""):
     error_html = f'<div class="error">{esc(error)}</div>' if error else ""
+    safe_prefill = esc(prefill_code)
+    copy_btn_html = ""
+    if str(prefill_code).strip():
+        copy_btn_html = (
+            f'<button class="copy-btn" type="button" data-copy="{safe_prefill}" '
+            'onclick="copyFrom(this)">Скопировать код</button>'
+        )
     return f"""<!doctype html>
 <html lang="ru">
 <head>
@@ -1340,8 +1347,9 @@ def render_login(error=""):
     <div class="auth-sub">Код выдаёт администратор. После входа вы сразу увидите кнопку «Скопировать профиль».</div>
     {error_html}
     <form method="post" action="login">
-      <input class="input" name="code" placeholder="Введите код доступа" autocomplete="off" required>
+      <input class="input" name="code" value="{safe_prefill}" placeholder="Введите код доступа" autocomplete="off" required>
       <div class="auth-actions">
+        {copy_btn_html}
         <button class="copy-btn primary" type="submit">Открыть профиль</button>
       </div>
     </form>
@@ -1631,7 +1639,8 @@ class Handler(BaseHTTPRequestHandler):
             slug = self.current_slug()
             if slug:
                 return self.send_html(render_profile(slug))
-            return self.send_html(render_login())
+            prefill_code = (parse_qs(parsed.query).get("code", [""])[0] or "").strip()
+            return self.send_html(render_login(prefill_code=prefill_code))
 
         return self.redirect("./")
 

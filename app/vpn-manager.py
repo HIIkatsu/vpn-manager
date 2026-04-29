@@ -33,6 +33,7 @@ BASE = Path("/root/vpn-manager")
 SETTINGS = BASE / "settings.json"
 USERS = BASE / "users.json"
 ROUTES = BASE / "routes.json"
+PENDING = BASE / "admin_pending_changes.json"
 BACKUPS = BASE / "backups"
 
 XRAY_CONFIG = Path("/usr/local/etc/xray/config.json")
@@ -60,6 +61,42 @@ def save(path: Path, data):
 
 def now():
     return datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+
+def load_pending_changes():
+    try:
+        if PENDING.exists():
+            data = json.loads(PENDING.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data.setdefault("changes", [])
+                return data
+    except Exception:
+        pass
+    return {"changes": []}
+
+
+def save_pending_changes(data):
+    save(PENDING, data)
+
+
+def mark_pending_change(action, slug=""):
+    data = load_pending_changes()
+    changes = data.get("changes", [])
+    action = str(action or "change")
+    slug = str(slug or "")
+    changes = [item for item in changes if not (str(item.get("action")) == action and str(item.get("slug")) == slug)]
+    changes.append({"action": action, "slug": slug, "ts": int(time.time())})
+    data["changes"] = changes[-50:]
+    data["updated_at"] = int(time.time())
+    save_pending_changes(data)
+
+
+def clear_pending_changes():
+    try:
+        if PENDING.exists():
+            PENDING.unlink()
+    except Exception:
+        save_pending_changes({"changes": []})
 
 
 def validate_slug(slug: str) -> str:
@@ -597,6 +634,7 @@ def apply_config(dry_run=False):
         raise SystemExit("ERROR: nginx is not active after reload")
 
     print("Applied OK")
+    clear_pending_changes()
     print_links()
 
 
@@ -633,6 +671,7 @@ def add_user(name, slug=None):
     }
     users_doc["users"].append(new_user)
     save(USERS, users_doc)
+    mark_pending_change("add", slug)
     print(f"Added: {new_user['name']}")
     print(f"Slug: {slug}")
     print(f"UUID: {new_user['uuid']}")
@@ -651,6 +690,7 @@ def set_enabled(slug, enabled):
     if not found:
         raise SystemExit(f"No such user: {slug}")
     save(USERS, users_doc)
+    mark_pending_change("toggle:enable" if enabled else "toggle:disable", slug)
     print(f"{slug}: {'enabled' if enabled else 'disabled'}")
     print("Run: vpn-manager apply")
 
@@ -669,15 +709,7 @@ def reissue_user(slug):
     old_uuid = found.get("uuid")
     found["uuid"] = str(uuid.uuid4())
     save(USERS, users_doc)
-    pending = BASE / "admin_pending_changes.json"
-    pending_data = {}
-    if pending.exists():
-        try:
-            pending_data = load(pending)
-        except Exception:
-            pending_data = {}
-    pending_data["reissue"] = pending_data.get("reissue", []) + [{"slug": slug, "old_uuid": old_uuid, "new_uuid": found["uuid"], "ts": now()}]
-    save(pending, pending_data)
+    mark_pending_change("reissue", slug)
     print(f"Reissued UUID for {slug}")
     print(f"Old UUID: {old_uuid}")
     print(f"New UUID: {found['uuid']}")
@@ -691,6 +723,7 @@ def delete_user(slug):
     if len(users_doc["users"]) == before:
         raise SystemExit(f"No such user: {slug}")
     save(USERS, users_doc)
+    mark_pending_change("delete", slug)
     print(f"Deleted from users.json: {slug}")
     print("Run: vpn-manager apply")
 
