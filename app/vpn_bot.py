@@ -239,6 +239,10 @@ def load_user_sessions():
 
 def save_user_sessions(data):
     USER_SESSIONS.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    try:
+        USER_SESSIONS.chmod(0o600)
+    except Exception:
+        pass
 
 
 def get_bound_slug(chat_id):
@@ -263,6 +267,10 @@ def load_code_guard():
 
 def save_code_guard(data):
     USER_CODE_GUARD.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+    try:
+        USER_CODE_GUARD.chmod(0o600)
+    except Exception:
+        pass
 
 
 def _guard_state(chat_id):
@@ -348,6 +356,13 @@ def resolve_user_by_code(code):
         if str(value).strip().upper() == normalized:
             return find_user(slug)
     return None
+
+
+def user_profile_urls(user, settings):
+    slug = str(user.get('slug', '')).strip()
+    sub = str(settings.get('subscription_path', 'vpn')).strip('/')
+    base = f"https://{settings['domain']}/{sub}/{slug}"
+    return f"{base}.json", f"{base}.txt"
 
 
 def safe_pre(text):
@@ -533,7 +548,12 @@ def main():
                             continue
                         settings = json.loads((BASE / 'settings.json').read_text(encoding='utf-8'))
                         if data == 'me:p':
-                            txt = f"<b>Profile URL</b>\n<code>{html.escape(str(user.get('subscription_url', 'n/a')))}</code>"
+                            json_url, txt_url = user_profile_urls(user, settings)
+                            txt = '\n'.join([
+                                '<b>Profile URLs</b>',
+                                f"JSON: <code>{html.escape(json_url)}</code>",
+                                f"TXT: <code>{html.escape(txt_url)}</code>",
+                            ])
                         elif data == 'me:c':
                             code = str(load_access_codes().get(str(user.get('slug', '')), '')).strip().upper() or 'N/A'
                             txt = f"<b>Your access code</b>\n<code>{html.escape(code)}</code>"
