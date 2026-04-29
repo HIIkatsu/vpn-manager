@@ -1521,7 +1521,7 @@ def render_profile(slug: str):
   </div>
 
   <section class="card qr-quick">
-    <div class="qr-tile"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
+    <div class="qr-tile"><img src="qr?kind=subscription&amp;v={qr_v}" alt="QR"></div>
     <div class="qr-quick-copy">
       <div class="quick-title">QR-подключение</div>
       <div class="muted">Быстрый альтернативный импорт через камеру.</div>
@@ -1536,7 +1536,7 @@ def render_profile(slug: str):
       <div class="step step-line step-compact"><div class="step-num">2</div><div class="step-text"><b>Откройте VPN-приложение</b><div class="muted">Экран импорта профиля.</div></div></div>
       <div class="step step-line step-compact"><div class="step-num">3</div><div class="step-text"><b>Импорт из буфера</b><div class="muted">Вставьте и подключитесь.</div></div></div>
     </div>
-    <details style="margin-top:12px;"><summary>Не скопировалось автоматически?</summary><div class="details-inner"><div class="manual-copy-box"><div class="manual-copy-title">Основная ссылка</div><textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea></div></div></details>
+    <details style="margin-top:12px;"><summary>Не скопировалось автоматически?</summary><div class="details-inner"><div class="manual-copy-box"><div class="manual-copy-title">Основная ссылка</div><textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea></div></div></details>
   </section>
 
   <section class="card">
@@ -1565,7 +1565,7 @@ def render_profile(slug: str):
         </div>
         <div class="manual-copy-box">
           <div class="manual-copy-title">Подписка</div>
-          <textarea id="subscriptionProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
+          <textarea id="subscriptionProfileLinkDetails" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea>
           {"<div class='manual-copy-title'>Резервная ссылка 8443</div><textarea id='fallbackProfileLink' class='manual-copy-text' readonly onclick='this.select()'>" + esc(fallback_primary_link) + "</textarea>" if fallback_exists else ""}
           <div class="manual-copy-title">Raw VLESS — только если не сработали подписка и резерв 8443</div>
           <textarea id="rawProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(raw_link)}</textarea>
@@ -1584,7 +1584,7 @@ def render_profile(slug: str):
     <button class="qr-modal-close" type="button" onclick="hideQrModal()">×</button>
     <div class="qr-modal-title">QR для подключения</div>
     <div class="qr-modal-sub">QR содержит профиль подключения для импорта.</div>
-    <div class="qr-modal-box"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
+    <div class="qr-modal-box"><img src="qr?kind=subscription&amp;v={qr_v}" alt="QR"></div>
     <button type="button" class="big-btn primary" data-copy="{esc(subscription_link)}" data-ok="Ссылка подключения скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">📋 Скопировать ссылку подключения</button>
   </div>
 </div>
@@ -1729,7 +1729,7 @@ class Handler(BaseHTTPRequestHandler):
             if not user or not user.get("enabled", True):
                 return self.send_html(render_login("Профиль недоступен."), 401)
             settings = load_settings()
-            kind = parse_qs(parsed.query).get("kind", ["json"])[0]
+            kind = parse_qs(parsed.query).get("kind", ["subscription"])[0]
             safe_slug = quote(str(slug), safe='')
             if kind in ("sub", "subscription"):
                 text = f"{subscription_base(settings)}/{safe_slug}.txt"
@@ -1737,8 +1737,10 @@ class Handler(BaseHTTPRequestHandler):
                 text = raw_vless_from_file(settings, user)
             elif kind in ("fallback", "8443"):
                 text = f"{subscription_base(settings)}/{safe_slug}-8443.json"
-            else:
+            elif kind in ("json", "xray"):
                 text = f"{subscription_base(settings)}/{safe_slug}.json"
+            else:
+                text = f"{subscription_base(settings)}/{safe_slug}.txt"
             svg = qr_svg(text)
             return self.send_bytes(svg, "image/svg+xml; charset=utf-8", 200)
 
