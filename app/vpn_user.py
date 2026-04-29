@@ -29,6 +29,16 @@ VERSION = "vpn-user-ui-premium-compact-v6"
 
 TRAFFIC_SOFT_LIMIT = 1024 * 1024 * 1024  # 1 GB soft bar scale if user is alone
 
+ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
+
+def load_inline_svg(name: str):
+    try:
+        raw = (ICON_DIR / name).read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+    cleaned = re.sub(r"<\?xml[^>]*>\s*", "", raw, flags=re.I)
+    return cleaned
+
 
 def load_json(path: Path, default=None):
     try:
@@ -1230,19 +1240,19 @@ summary:active{
   box-shadow:0 18px 50px rgba(0,0,0,.4);padding:18px;
 }
 .connect-title{font-size:28px;font-weight:900;letter-spacing:-.02em}
-.connect-sub{margin-top:8px;color:#b9c5e8;font-size:15px;line-height:1.45;max-width:48ch}
-.app-card{margin-top:14px;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);padding:14px}
-.app-card.recommended{background:linear-gradient(180deg,rgba(78,112,193,.17),rgba(255,255,255,.03));border-color:rgba(130,164,247,.36)}
+.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.4;max-width:56ch}
+.app-card{margin-top:12px;border-radius:18px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.03);padding:14px}
+.app-card.recommended{background:linear-gradient(180deg,rgba(74,96,150,.2),rgba(255,255,255,.03));border-color:rgba(133,156,214,.45)}
 .app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .app-head{display:flex;align-items:center;gap:10px}
-.app-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.2);background:linear-gradient(145deg,rgba(44,56,86,.95),rgba(23,31,54,.95))}
-.app-avatar svg{width:24px;height:24px;display:block}
+.app-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.18);background:linear-gradient(145deg,rgba(44,56,86,.95),rgba(23,31,54,.95));overflow:hidden}
+.app-avatar svg{width:100%;height:100%;display:block}
 .recommended .app-avatar{border-color:rgba(148,179,255,.34);background:linear-gradient(145deg,rgba(74,97,160,.95),rgba(34,47,83,.95))}
-.avatar-happ{background:linear-gradient(145deg,rgba(66,84,122,.95),rgba(29,38,65,.95))}
-.app-icons{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
-.mini-app{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;flex:0 0 auto}
-.mini-app svg{width:16px;height:16px;display:block;opacity:.96}
-.manual-section{margin-top:4px;padding:10px 11px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02)}
+.app-pill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 12px}
+.app-icons{display:contents}
+.mini-app{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;min-width:0}
+.mini-app svg{width:18px;height:18px;display:block;opacity:.98;flex:0 0 auto}
+.manual-section{margin-top:10px;padding:10px 11px;border-radius:12px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02)}
 .manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#aebcdf;margin:0 0 8px}
 .json-pill{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:13px;font-weight:700;text-decoration:none}
 .advanced-note{margin-top:6px;font-size:12px;color:#aebcdf}
@@ -1487,6 +1497,12 @@ def render_profile(slug: str):
     hiddify_link_js = json.dumps(hiddify_link, ensure_ascii=False)
     hiddify_profile_name_js = json.dumps(hiddify_profile_name, ensure_ascii=False)
 
+    hiddify_icon = load_inline_svg("hiddify.svg")
+    happ_icon = load_inline_svg("happ.svg")
+    v2rayng_icon = load_inline_svg("v2rayng.svg")
+    nekobox_icon = load_inline_svg("nekobox.svg")
+    streisand_icon = load_inline_svg("streisand.svg")
+
     total = int(info["total"])
     down = int(info["down"])
     up = int(info["up"])
@@ -1612,26 +1628,26 @@ def render_profile(slug: str):
 <div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
   <div class="connect-card">
     <div class="connect-title">Подключение VPN</div>
-    <div class="connect-sub">Рекомендуемый способ — Hiddify. Если он не подходит, скопируйте ссылку подключения для другого приложения.</div>
+    <div class="connect-sub">Рекомендуем Hiddify для быстрого импорта. Если не сработает — скопируйте ссылку для другого приложения.</div>
 
     <div class="app-card recommended">
       <div class="app-top">
-        <div class="app-head"><div class="app-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 4v16M17 4v16M7 12h10" stroke="white" stroke-width="2.6" stroke-linecap="round"/></svg></div><div class="app-name">Hiddify</div></div>
+        <div class="app-head"><div class="app-avatar" aria-hidden="true">{hiddify_icon}</div><div class="app-name">Hiddify</div></div>
         <div class="app-badge">Рекомендуется</div>
       </div>
-      <p class="app-text">Быстрый импорт. Ссылка подключения скопируется, затем откроется приложение.</p>
+      <p class="app-text">Быстрый импорт профиля в один шаг.</p>
       <button type="button" class="big-btn primary" onclick="openHiddify()">Открыть в Hiddify</button>
-      <div class="app-hint">Если автоимпорт не сработал — нажмите «Буфер обмена» в Hiddify.</div>
+      <div class="app-hint">Если автоимпорт не сработал — используйте импорт из буфера.</div>
     </div>
 
     <div class="app-card">
       <div class="app-top">
-        <div class="app-head"><div class="app-avatar avatar-happ" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4.4" stroke="#DDE8FF" stroke-opacity=".92" stroke-width="1.7"/><path d="M8.5 8v8M15.5 8v8M8.5 12h7" stroke="#DDE8FF" stroke-width="1.9" stroke-linecap="round"/></svg></div><div class="app-name">Другие приложения</div></div>
+        <div class="app-head"><div class="app-name">Другие приложения</div></div>
       </div>
-      <p class="app-text">Для Happ, v2rayNG, NekoBox, Streisand и других клиентов.</p>
-      <div class="app-icons" aria-hidden="true"><span class="mini-app"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="4" width="16" height="16" rx="4.4" stroke="#DBE8FF" stroke-width="1.7"/><path d="M8.5 8v8M15.5 8v8M8.5 12h7" stroke="#DBE8FF" stroke-width="1.8" stroke-linecap="round"/></svg>Happ</span><span class="mini-app"><svg viewBox="0 0 24 24" fill="none"><path d="M5.5 6.5h13l-6.5 11z" stroke="#DBE8FF" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="10.5" r="1.8" fill="#DBE8FF"/></svg>v2rayNG</span><span class="mini-app"><svg viewBox="0 0 24 24" fill="none"><path d="M7 15.5v-5a5 5 0 0 1 10 0v5" stroke="#DBE8FF" stroke-width="1.7" stroke-linecap="round"/><path d="M9 12.5h6M10 16.5h4" stroke="#DBE8FF" stroke-width="1.7" stroke-linecap="round"/></svg>NekoBox</span><span class="mini-app"><svg viewBox="0 0 24 24" fill="none"><path d="M6.5 7.5h11M6.5 12h11M6.5 16.5h8" stroke="#DBE8FF" stroke-width="1.8" stroke-linecap="round"/></svg>Streisand</span></div>
+      <p class="app-text">Импортируйте ссылку в удобное приложение.</p>
+      <div class="app-pill-grid" aria-hidden="true"><div class="mini-app">{happ_icon}Happ</div><div class="mini-app">{v2rayng_icon}v2rayNG</div><div class="mini-app">{nekobox_icon}NekoBox</div><div class="mini-app">{streisand_icon}Streisand</div></div>
       <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">📋 Скопировать ссылку</button>
-      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a><div class='advanced-note'>Для ручного импорта и совместимых клиентов.</div></div>" if json_exists else ""}
+      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a><div class='advanced-note'>Скачайте файл для ручного импорта, если автоимпорт недоступен.</div></div>" if json_exists else ""}
     </div>
     <div class="connect-footer">
       <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
