@@ -1218,6 +1218,26 @@ summary:active{
 .step-compact .muted{font-size:13px}
 .bottom-actions{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
 .footer-note,.bottom-actions .copy-btn{border-radius:28px}
+.connect-modal{
+  position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;
+  background:rgba(8,10,18,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70;padding:14px;
+}
+.connect-modal.open{opacity:1;pointer-events:auto}
+.connect-card{
+  width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:24px;
+  border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(29,36,58,.94),rgba(16,20,35,.96));
+  box-shadow:0 18px 50px rgba(0,0,0,.4);padding:18px;
+}
+.connect-title{font-size:28px;font-weight:900;letter-spacing:-.02em}
+.connect-sub{margin-top:8px;color:var(--muted);font-size:16px;line-height:1.4}
+.app-card{margin-top:14px;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);padding:14px}
+.app-card.recommended{background:linear-gradient(180deg,rgba(76,120,255,.25),rgba(255,255,255,.06));border-color:rgba(134,168,255,.5)}
+.app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.app-name{font-size:19px;font-weight:800}
+.app-badge{font-size:13px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(154,255,214,.15);border:1px solid rgba(154,255,214,.38);color:#d6ffee}
+.app-text{font-size:15px;line-height:1.35;color:#dbe2ff;margin:0 0 12px}
+.connect-footer{display:flex;justify-content:flex-end;margin-top:14px}
 @media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
 
 </style>
@@ -1298,6 +1318,38 @@ function copyFrom(el){
   try{fetch('event',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=profile_copied'});}catch(e){}
 }
 
+function openConnectModal(){
+  const modal = document.getElementById('connectModal');
+  if(!modal) return;
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden','false');
+}
+function closeConnectModal(){
+  const modal = document.getElementById('connectModal');
+  if(!modal) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden','true');
+}
+async function copyProfile(okText){
+  const profileUrl = (window.__profileLink || '').trim();
+  if(!profileUrl){
+    showToast('Ссылка профиля недоступна');
+    return false;
+  }
+  const done = await copyText(profileUrl, okText || 'Профиль скопирован', 'jsonProfileLink');
+  if(done){
+    try{fetch('event',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=profile_copied'});}catch(e){}
+  }
+  return done;
+}
+async function openHiddify(){
+  const copied = await copyProfile('Профиль скопирован. Если Hiddify не открылся — вставьте ссылку вручную.');
+  if(!copied) return;
+  const profileUrl = (window.__profileLink || '').trim();
+  const deepLink = 'hiddify://import/' + encodeURIComponent(profileUrl) + '#NeuroVPN';
+  window.location.href = deepLink;
+}
+
 function showQrModal(){
   const modal = document.getElementById('qrModal');
   if(!modal) return;
@@ -1312,6 +1364,7 @@ function hideQrModal(){
 }
 document.addEventListener('keydown', function(e){
   if(e.key === 'Escape') hideQrModal();
+  if(e.key === 'Escape') closeConnectModal();
 });
 document.addEventListener('DOMContentLoaded', function(){
   const codeInput = document.querySelector('input[name="code"]');
@@ -1399,6 +1452,8 @@ def render_profile(slug: str):
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
     fallback_json_exists = (subscription_dir(settings) / f"{slug}-8443.json").exists()
     fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
+    profile_link = json_link if json_exists else subscription_link
+    profile_link_js = json.dumps(profile_link, ensure_ascii=False)
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1452,7 +1507,7 @@ def render_profile(slug: str):
   </section>
 
   <div class="main-cta-wrap">
-    <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="Профиль скопирован. Импортируйте в приложении." data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
+    <button type="button" class="big-btn primary" onclick="openConnectModal()">🚀 Подключить VPN</button>
   </div>
 
   <section class="card qr-quick">
@@ -1523,7 +1578,34 @@ def render_profile(slug: str):
     <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="JSON-профиль скопирован" data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
   </div>
 </div>
+<div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
+  <div class="connect-card">
+    <div class="connect-title">Подключение VPN</div>
+    <div class="connect-sub">Выберите приложение. Рекомендуем Hiddify — он умеет быстро импортировать профиль.</div>
+
+    <div class="app-card recommended">
+      <div class="app-top">
+        <div class="app-name">Hiddify</div>
+        <div class="app-badge">Рекомендуется</div>
+      </div>
+      <p class="app-text">Быстрый импорт профиля. Ссылка скопируется, затем откроется Hiddify.</p>
+      <button type="button" class="big-btn primary" onclick="openHiddify()">🚀 Открыть в Hiddify</button>
+    </div>
+
+    <div class="app-card">
+      <div class="app-top">
+        <div class="app-name">Другое приложение</div>
+      </div>
+      <p class="app-text">Для v2rayNG, NekoBox, Streisand и других клиентов.</p>
+      <button type="button" class="big-btn secondary" onclick="copyProfile('Профиль скопирован. Импортируйте в приложении.')">📋 Скопировать профиль</button>
+    </div>
+    <div class="connect-footer">
+      <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
+<script>window.__profileLink = {profile_link_js};</script>
 {JS}
 </body>
 </html>"""
