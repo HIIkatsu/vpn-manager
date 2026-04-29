@@ -363,8 +363,12 @@ def public_user_url(settings):
     return f"https://{settings['domain']}/{public_user_path(settings)}/"
 
 
-def public_user_invite_url(settings):
-    return f"{public_user_url(settings)}?invite=1"
+def public_user_invite_url(settings, access_code=""):
+    base_url = f"{public_user_url(settings)}?invite=1"
+    code = str(access_code or "").strip()
+    if not code:
+        return base_url
+    return f"{base_url}&code={quote(code, safe='')}"
 
 
 def subscription_base(settings):
@@ -2727,7 +2731,7 @@ class Handler(BaseHTTPRequestHandler):
 
             name = str(user.get("name", slug))
             access_code = codes.get(slug, "")
-            user_page = public_user_invite_url(settings)
+            user_page = public_user_invite_url(settings, access_code)
             invite_text = (
                 f"🔐 VPN доступ — {name}\n\n"
                 f"Страница подключения:\n{user_page}\n\n"
