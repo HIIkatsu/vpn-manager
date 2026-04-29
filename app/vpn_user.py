@@ -1234,6 +1234,13 @@ summary:active{
 .app-card{margin-top:14px;border-radius:18px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);padding:14px}
 .app-card.recommended{background:linear-gradient(180deg,rgba(76,120,255,.25),rgba(255,255,255,.06));border-color:rgba(134,168,255,.5)}
 .app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+.app-head{display:flex;align-items:center;gap:10px}
+.app-avatar{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:900;font-size:12px;color:#fff;background:linear-gradient(135deg,#5b7bff,#6ed0ff);border:1px solid rgba(255,255,255,.34)}
+.recommended .app-avatar{width:44px;height:44px;font-size:14px;box-shadow:0 8px 18px rgba(64,116,255,.35)}
+.app-icons{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.mini-app{padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:12px;color:#d9e4ff}
+.advanced-json-link{display:inline-block;margin-top:10px;color:#9dc0ff;font-size:13px;text-decoration:underline}
+.advanced-note{margin-top:4px;font-size:12px;color:var(--muted)}
 .app-name{font-size:19px;font-weight:800}
 .app-badge{font-size:13px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(154,255,214,.15);border:1px solid rgba(154,255,214,.38);color:#d6ffee}
 .app-text{font-size:15px;line-height:1.35;color:#dbe2ff;margin:0 0 12px}
@@ -1331,21 +1338,21 @@ function closeConnectModal(){
   modal.setAttribute('aria-hidden','true');
 }
 async function copyProfile(okText){
-  const profileUrl = (window.__profileLink || '').trim();
+  const profileUrl = (window.__genericCopyLink || '').trim();
   if(!profileUrl){
     showToast('Ссылка профиля недоступна');
     return false;
   }
-  const done = await copyText(profileUrl, okText || 'Профиль скопирован', 'jsonProfileLink');
+  const done = await copyText(profileUrl, okText || 'Ссылка подключения скопирована', 'subscriptionProfileLink');
   if(done){
     try{fetch('event',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=profile_copied'});}catch(e){}
   }
   return done;
 }
 async function openHiddify(){
-  const copied = await copyProfile('Профиль скопирован. Если Hiddify не открылся — вставьте ссылку вручную.');
+  const copied = await copyProfile('Ссылка подключения скопирована. Если Hiddify не открылся — вставьте ссылку вручную.');
   if(!copied) return;
-  const profileUrl = (window.__profileLink || '').trim();
+  const profileUrl = (window.__hiddifyLink || '').trim();
   const deepLink = 'hiddify://import/' + encodeURIComponent(profileUrl) + '#NeuroVPN';
   window.location.href = deepLink;
 }
@@ -1452,8 +1459,11 @@ def render_profile(slug: str):
     json_exists = (subscription_dir(settings) / f"{slug}.json").exists()
     fallback_json_exists = (subscription_dir(settings) / f"{slug}-8443.json").exists()
     fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
-    profile_link = json_link if json_exists else subscription_link
-    profile_link_js = json.dumps(profile_link, ensure_ascii=False)
+    generic_copy_link = subscription_link
+    hiddify_link = subscription_link
+    json_link_js = json.dumps(json_link, ensure_ascii=False)
+    generic_copy_link_js = json.dumps(generic_copy_link, ensure_ascii=False)
+    hiddify_link_js = json.dumps(hiddify_link, ensure_ascii=False)
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1526,7 +1536,7 @@ def render_profile(slug: str):
       <div class="step step-line step-compact"><div class="step-num">2</div><div class="step-text"><b>Откройте VPN-приложение</b><div class="muted">Экран импорта профиля.</div></div></div>
       <div class="step step-line step-compact"><div class="step-num">3</div><div class="step-text"><b>Импорт из буфера</b><div class="muted">Вставьте и подключитесь.</div></div></div>
     </div>
-    <details style="margin-top:12px;"><summary>Не скопировалось автоматически?</summary><div class="details-inner"><div class="manual-copy-box"><div class="manual-copy-title">Основная ссылка</div><textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(json_link if json_exists else subscription_link)}</textarea></div></div></details>
+    <details style="margin-top:12px;"><summary>Не скопировалось автоматически?</summary><div class="details-inner"><div class="manual-copy-box"><div class="manual-copy-title">Основная ссылка</div><textarea id="jsonProfileLink" class="manual-copy-text" readonly onclick="this.select()">{esc(subscription_link)}</textarea></div></div></details>
   </section>
 
   <section class="card">
@@ -1575,29 +1585,31 @@ def render_profile(slug: str):
     <div class="qr-modal-title">QR для подключения</div>
     <div class="qr-modal-sub">QR содержит профиль подключения для импорта.</div>
     <div class="qr-modal-box"><img src="qr?kind=json&amp;v={qr_v}" alt="QR"></div>
-    <button type="button" class="big-btn primary" data-copy="{esc(json_link if json_exists else subscription_link)}" data-ok="JSON-профиль скопирован" data-target="jsonProfileLink" onclick="copyFrom(this)">Скопировать профиль</button>
+    <button type="button" class="big-btn primary" data-copy="{esc(subscription_link)}" data-ok="Ссылка подключения скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">📋 Скопировать ссылку подключения</button>
   </div>
 </div>
 <div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
   <div class="connect-card">
     <div class="connect-title">Подключение VPN</div>
-    <div class="connect-sub">Выберите приложение. Рекомендуем Hiddify — он умеет быстро импортировать профиль.</div>
+    <div class="connect-sub">Рекомендуемый способ — Hiddify. Если он не подходит, скопируйте ссылку подключения для другого приложения.</div>
 
     <div class="app-card recommended">
       <div class="app-top">
-        <div class="app-name">Hiddify</div>
+        <div class="app-head"><div class="app-avatar" aria-hidden="true">H</div><div class="app-name">Hiddify</div></div>
         <div class="app-badge">Рекомендуется</div>
       </div>
-      <p class="app-text">Быстрый импорт профиля. Ссылка скопируется, затем откроется Hiddify.</p>
+      <p class="app-text">Быстрый импорт. Ссылка подключения скопируется, затем откроется приложение.</p>
       <button type="button" class="big-btn primary" onclick="openHiddify()">🚀 Открыть в Hiddify</button>
     </div>
 
     <div class="app-card">
       <div class="app-top">
-        <div class="app-name">Другое приложение</div>
+        <div class="app-head"><div class="app-avatar" aria-hidden="true">APP</div><div class="app-name">Другое приложение</div></div>
       </div>
       <p class="app-text">Для v2rayNG, NekoBox, Streisand и других клиентов.</p>
-      <button type="button" class="big-btn secondary" onclick="copyProfile('Профиль скопирован. Импортируйте в приложении.')">📋 Скопировать профиль</button>
+      <div class="app-icons" aria-hidden="true"><span class="mini-app">v2rayNG</span><span class="mini-app">NekoBox</span><span class="mini-app">Streisand</span></div>
+      <button type="button" class="big-btn secondary" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">📋 Скопировать ссылку подключения</button>
+      {"<a class='advanced-json-link' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a><div class='advanced-note'>Расширенный вариант для ручной настройки.</div>" if json_exists else ""}
     </div>
     <div class="connect-footer">
       <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
@@ -1605,7 +1617,7 @@ def render_profile(slug: str):
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script>window.__profileLink = {profile_link_js};</script>
+<script>window.__hiddifyLink = {hiddify_link_js}; window.__genericCopyLink = {generic_copy_link_js}; window.__jsonLink = {json_link_js};</script>
 {JS}
 </body>
 </html>"""
