@@ -305,6 +305,8 @@ def handle(text):
         name = str(user.get('name', '')).strip() or slug
         pre = f"🔐 VPN доступ — {name}\n\nСтраница подключения:\n{url}\n\nКод доступа: {code}"
         return f"🔗 <b>Invite for {html.escape(name)}</b>\n\nСтраница:\n<code>{html.escape(url)}</code>\n\nКод:\n<code>{html.escape(code)}</code>\n\n{safe_pre(pre)}"
+    if cmd == '/check' and not arg:
+        return 'Usage: /check <name or slug>\nExample: /check alise'
     if cmd == '/check' and arg:
         matches, _ = _resolve_users(arg)
         if not matches:
