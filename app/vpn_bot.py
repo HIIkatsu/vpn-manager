@@ -9,7 +9,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BASE = Path('/root/vpn-manager')
+BASE = Path(__file__).resolve().parents[1]
+if not (BASE / 'settings.json').exists():
+    BASE = Path('/root/vpn-manager')
 CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
 PENDING = {}
@@ -54,6 +56,54 @@ def split_for_telegram(text, limit=MAX_TG_MESSAGE):
     return parts
 
 
+def split_html_sections(text, limit=MAX_TG_MESSAGE):
+    sections = text.split('\n\n')
+    chunks = []
+    current = ''
+    for sec in sections:
+        candidate = sec if not current else current + '\n\n' + sec
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+            current = ''
+        if len(sec) <= limit:
+            current = sec
+        else:
+            chunks.extend(split_for_telegram(sec, limit))
+    if current:
+        chunks.append(current)
+    return chunks or ['']
+
+
+def public_user_path(settings):
+    sub = str(settings.get('subscription_path', 'vpn')).strip('/')
+    if sub.startswith('vpn-'):
+        return 'vpn-user-' + sub.split('vpn-', 1)[1]
+    return sub + '-user'
+
+
+def load_users():
+    return json.loads((BASE / 'users.json').read_text(encoding='utf-8')).get('users', [])
+
+
+def find_user(query):
+    q = str(query or '').strip()
+    if not q:
+        return None
+    ql = q.casefold()
+    for u in load_users():
+        if str(u.get('slug', '')).strip().casefold() == ql:
+            return u
+    for u in load_users():
+        for key in ('name', 'alias', 'username'):
+            v = str(u.get(key, '')).strip()
+            if v and v.casefold() == ql:
+                return u
+    return None
+
+
 def format_status(report):
     lines = [f"{icon(report.get('ok'))} <b>VPN status</b>", "", "<b>Services</b>"]
     name_map = {'xray': 'Xray', 'nginx': 'Nginx', 'vpn-admin': 'Admin', 'vpn-user': 'User page'}
@@ -69,7 +119,7 @@ def format_status(report):
     lines.extend(["", "<b>HTTP</b>"])
     admin = report['checks']['http']['admin']
     user = report['checks']['http']['user']
-    admin_icon = '🔒' if admin.get('code') == 401 else icon(admin.get('ok'))
+    admin_icon = '🔒' if admin.get('code') in (401, 403) else icon(admin.get('ok'))
     lines.append(f"{admin_icon} Admin: {esc(admin.get('summary', admin.get('status', 'unknown')))}")
     lines.append(f"{icon(user.get('ok'))} User page: {esc(user.get('summary', user.get('status', 'unknown')))}")
     route = report['checks']['routing_json']
@@ -122,7 +172,7 @@ def handle(text):
             raise RuntimeError((o+'\n'+e).strip() or 'status command failed')
         return format_status(json.loads(o))
     if cmd=='/users':
-        u=json.loads((BASE/'users.json').read_text())['users']
+        u=load_users()
         lines=['👥 <b>Users</b>', '']
         for x in u:
             s=user_stats(x['slug'])
@@ -133,12 +183,11 @@ def handle(text):
             lines.append('')
         return '\n'.join(lines).strip() or 'No users'
     if cmd=='/invite' and arg:
-        users = {u['slug']: u for u in json.loads((BASE/'users.json').read_text())['users']}
-        u = users.get(arg)
+        u = find_user(arg)
         if not u:
             return f"❌ <b>Error</b>\n<code>user not found: {esc(arg)}</code>"
         settings = json.loads((BASE/'settings.json').read_text())
-        page = f"https://{settings['domain']}/{u.get('path', '').strip('/')}/?invite=1"
+        page = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1"
         code = esc(u.get('access_code', 'n/a'))
         name = esc(u.get('name') or u.get('slug'))
         lines = [
@@ -155,9 +204,12 @@ def handle(text):
         ]
         return '\n'.join(lines)
     if cmd=='/check' and arg:
-        c,o,e=run(['vpn-manager','check-user',arg])
+        u = find_user(arg)
+        slug = u.get('slug', arg) if u else arg
+        c,o,e=run(['vpn-manager','check-user',slug])
         status = '✅ User profile looks OK' if c == 0 else '❌ User profile has issues'
-        return f"🔍 <b>Check</b> <code>{esc(arg)}</code>\n\n<pre>{esc((o + chr(10) + e).strip()[:2500] or 'no output')}</pre>\n\n<b>Result</b>\n{status}"
+        title = f"🔍 <b>Check {esc(u.get('name') or slug)}</b> <code>{esc(slug)}</code>" if u else f"🔍 <b>Check</b> <code>{esc(slug)}</code>"
+        return f"{title}\n\n<pre>{esc((o + chr(10) + e).strip()[:2500] or 'no output')}</pre>\n\n<b>Result</b>\n{status}"
     if cmd=='/backup':
         c,o,e=run(['python3','/root/vpn-manager/app/vpn_backup.py'])
         if c != 0:
@@ -174,6 +226,9 @@ def handle(text):
         c,o,e=run(['python3','/root/vpn-manager/app/vpn_health.py'])
         return 'Repair done:\n'+(o+'\n'+e)[:3000]
     if cmd=='/reissue' and arg:
+        u = find_user(arg)
+        if u:
+            arg = u.get('slug', arg)
         token=secrets.token_hex(4)
         PENDING[token]=arg
         return f'Confirm reissue for {arg}: /confirm {token}'
@@ -201,7 +256,7 @@ def main():
                     api(token,'sendMessage',{'chat_id':chat_id,'text':'❌ <b>Error</b>\n<code>access denied</code>','parse_mode':'HTML'})
                     continue
                 resp=handle(text)
-                for chunk in split_for_telegram(resp):
+                for chunk in split_html_sections(resp):
                     api(token,'sendMessage',{'chat_id':chat_id,'text':chunk,'parse_mode':'HTML'})
         except Exception as e:
             short = esc(str(e) or e.__class__.__name__)
