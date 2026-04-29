@@ -224,20 +224,25 @@ def build_client_routing(routes):
             "type": "field",
             "ip": routes.get("private_ips", []),
             "outboundTag": "direct",
-            "__name__": "Direct private networks",
+            "ruleTag": "Direct private networks",
         },
         {
             "type": "field",
             "protocol": routes.get("direct_protocols", ["bittorrent"]),
             "outboundTag": "direct",
-            "__name__": "Direct selected protocols",
+            "ruleTag": "Direct selected protocols",
         },
         {
             "type": "field",
             "domain": routes.get("direct_domains", []),
+            "outboundTag": "direct",
+            "ruleTag": "Direct Russian domains",
+        },
+        {
+            "type": "field",
             "ip": routes.get("direct_ips", []),
             "outboundTag": "direct",
-            "__name__": "Direct Russian services",
+            "ruleTag": "Direct Russian IPs",
         },
     ]
     routing = {
