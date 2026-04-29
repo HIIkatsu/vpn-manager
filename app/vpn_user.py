@@ -462,9 +462,14 @@ STYLE = """
   --shadow:0 22px 70px rgba(0,0,0,.30);
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{
+  scroll-behavior:smooth;
+  min-height:100%;
+  background:var(--bg);
+}
 body{
   margin:0;
+  min-height:100vh;
   font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   color:var(--text);
   background:
@@ -477,6 +482,12 @@ body{
   max-width:900px;
   margin:0 auto;
   padding:16px 14px 32px;
+}
+.wrap.login-wrap{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
 }
 .hero{
   margin-bottom:12px;
@@ -902,6 +913,10 @@ summary::-webkit-details-marker{
   opacity:1;
 }
 @media (max-width:720px){
+  .wrap.login-wrap{
+    justify-content:flex-start;
+    padding-top:22px;
+  }
   .traffic-meta{
     grid-template-columns:repeat(2,minmax(0,1fr));
   }
@@ -1296,7 +1311,7 @@ def render_login(error=""):
 {STYLE}
 </head>
 <body>
-<div class="wrap">
+<div class="wrap login-wrap">
   <section class="hero">
     <h1>VPN доступ</h1>
     <div class="subtitle">Введите личный код, чтобы открыть ваш готовый профиль подключения.</div>

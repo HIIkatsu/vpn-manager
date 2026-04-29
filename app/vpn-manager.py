@@ -285,19 +285,27 @@ def vless_outbound(settings, user, port=None, tag="proxy"):
         "shortId": settings["short_id"],
         "spiderX": settings.get("spider_x", "/"),
     }
+    node_name = str(user.get("title") or settings.get("profile_title") or user.get("name") or f"VPN {user['slug']}")
     return {
         "tag": tag,
+        "remark": node_name,
+        "remarks": node_name,
+        "ps": node_name,
+        "name": node_name,
         "protocol": "vless",
         "settings": {
             "vnext": [
                 {
                     "address": client_host(settings),
                     "port": port,
+                    "remark": node_name,
+                    "remarks": node_name,
                     "users": [
                         {
                             "id": user["uuid"],
                             "encryption": "none",
                             "flow": settings.get("flow", "xtls-rprx-vision"),
+                            "email": f"{user['slug']}@vpn.local",
                         }
                     ],
                 }
@@ -315,7 +323,13 @@ def client_config_json(settings, routes, user, port=None):
     """Full Xray client config. Unlike a vless:// URI, this preserves routing rules."""
     routing = client_routing_object(routes)
     # With proxy as the first outbound, traffic not matched by RU/direct rules goes through VPN.
+    profile_name = str(user.get("title") or settings.get("profile_title") or user.get("name") or f"VPN {user['slug']}")
     return {
+        "remarks": profile_name,
+        "remark": profile_name,
+        "ps": profile_name,
+        "name": profile_name,
+        "title": profile_name,
         "log": {"loglevel": "warning"},
         "inbounds": [
             {
