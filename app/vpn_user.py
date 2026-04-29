@@ -1235,15 +1235,23 @@ summary:active{
 .app-card.recommended{background:linear-gradient(180deg,rgba(76,120,255,.25),rgba(255,255,255,.06));border-color:rgba(134,168,255,.5)}
 .app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
 .app-head{display:flex;align-items:center;gap:10px}
-.app-avatar{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-weight:900;font-size:12px;color:#fff;background:linear-gradient(135deg,#5b7bff,#6ed0ff);border:1px solid rgba(255,255,255,.34)}
-.recommended .app-avatar{width:44px;height:44px;font-size:14px;box-shadow:0 8px 18px rgba(64,116,255,.35)}
-.app-icons{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-.mini-app{padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:12px;color:#d9e4ff}
-.advanced-json-link{display:inline-block;margin-top:10px;color:#9dc0ff;font-size:13px;text-decoration:underline}
-.advanced-note{margin-top:4px;font-size:12px;color:var(--muted)}
+.app-avatar{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.26);box-shadow:0 8px 18px rgba(0,0,0,.26)}
+.app-avatar svg{width:28px;height:28px;display:block}
+.recommended .app-avatar{width:46px;height:46px;border-color:rgba(174,201,255,.42);background:linear-gradient(135deg,#3f6dff,#7f63ff 56%,#33c6ff)}
+.avatar-happ{background:linear-gradient(135deg,#2f3347,#6b77a2)}
+.app-icons{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.mini-app{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:12px;color:#d9e4ff;line-height:1}
+.mini-app i{width:17px;height:17px;border-radius:999px;display:grid;place-items:center;font-style:normal;font-weight:900;font-size:10px;color:#fff;background:linear-gradient(135deg,#5b7bff,#6ed0ff);box-shadow:inset 0 0 0 1px rgba(255,255,255,.26)}
+.mini-app.neko i{background:linear-gradient(135deg,#7359ff,#34d1ff)}
+.mini-app.streisand i{background:linear-gradient(135deg,#52a8ff,#65ffbe)}
+.json-pill{display:inline-flex;align-items:center;justify-content:center;margin-top:6px;padding:7px 12px;border-radius:999px;border:1px solid rgba(157,192,255,.4);background:rgba(130,165,255,.13);color:#d8e7ff;font-size:13px;font-weight:700;text-decoration:none}
+.advanced-note{margin-top:6px;font-size:12px;color:var(--muted)}
 .app-name{font-size:19px;font-weight:800}
 .app-badge{font-size:13px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(154,255,214,.15);border:1px solid rgba(154,255,214,.38);color:#d6ffee}
 .app-text{font-size:15px;line-height:1.35;color:#dbe2ff;margin:0 0 12px}
+.app-hint{margin-top:8px;font-size:12px;color:#cbd8ff;line-height:1.35}
+.hiddify-fallback-btn{margin-top:8px;min-height:42px;font-size:14px}
+.big-btn.full{width:100%;display:flex;align-items:center;justify-content:center}
 .connect-footer{display:flex;justify-content:flex-end;margin-top:14px}
 @media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
 
@@ -1338,7 +1346,19 @@ function closeConnectModal(){
   modal.setAttribute('aria-hidden','true');
 }
 async function copyProfile(okText){
-  const profileUrl = (window.__genericCopyLink || '').trim();
+  const profileUrl = (window.__genericSubscriptionLink || '').trim();
+  if(!profileUrl){
+    showToast('Ссылка профиля недоступна');
+    return false;
+  }
+  const done = await copyText(profileUrl, okText || 'Ссылка подключения скопирована', 'subscriptionProfileLink');
+  if(done){
+    try{fetch('event',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'action=profile_copied'});}catch(e){}
+  }
+  return done;
+}
+async function copyHiddifySubscription(okText){
+  const profileUrl = (window.__hiddifySubscriptionLink || '').trim();
   if(!profileUrl){
     showToast('Ссылка профиля недоступна');
     return false;
@@ -1350,10 +1370,11 @@ async function copyProfile(okText){
   return done;
 }
 async function openHiddify(){
-  const copied = await copyProfile('Ссылка подключения скопирована. Если Hiddify не открылся — вставьте ссылку вручную.');
+  const copied = await copyHiddifySubscription('Ссылка подключения скопирована. Если Hiddify не открылся — вставьте ссылку вручную.');
   if(!copied) return;
   const profileUrl = (window.__hiddifyLink || '').trim();
-  const deepLink = 'hiddify://import/' + encodeURIComponent(profileUrl) + '#NeuroVPN';
+  const profileName = (window.__hiddifyProfileName || 'NeuroVPN').trim() || 'NeuroVPN';
+  const deepLink = 'hiddify://import/' + profileUrl + '#' + encodeURIComponent(profileName);
   window.location.href = deepLink;
 }
 
@@ -1461,9 +1482,12 @@ def render_profile(slug: str):
     fallback_primary_link = fallback_json_link if fallback_json_exists else fallback_link
     generic_copy_link = subscription_link
     hiddify_link = subscription_link
+    display_name = str(user.get("name", slug))
+    hiddify_profile_name = display_name or "NeuroVPN"
     json_link_js = json.dumps(json_link, ensure_ascii=False)
     generic_copy_link_js = json.dumps(generic_copy_link, ensure_ascii=False)
     hiddify_link_js = json.dumps(hiddify_link, ensure_ascii=False)
+    hiddify_profile_name_js = json.dumps(hiddify_profile_name, ensure_ascii=False)
 
     total = int(info["total"])
     down = int(info["down"])
@@ -1472,7 +1496,6 @@ def render_profile(slug: str):
     last_seen = str(info["last"] or "—")
     percent = progress_percent(total, max_total)
 
-    display_name = str(user.get("name", slug))
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
 
@@ -1595,21 +1618,23 @@ def render_profile(slug: str):
 
     <div class="app-card recommended">
       <div class="app-top">
-        <div class="app-head"><div class="app-avatar" aria-hidden="true">H</div><div class="app-name">Hiddify</div></div>
+        <div class="app-head"><div class="app-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M7 4v16M17 4v16M7 12h10" stroke="white" stroke-width="2.6" stroke-linecap="round"/></svg></div><div class="app-name">Hiddify</div></div>
         <div class="app-badge">Рекомендуется</div>
       </div>
       <p class="app-text">Быстрый импорт. Ссылка подключения скопируется, затем откроется приложение.</p>
       <button type="button" class="big-btn primary" onclick="openHiddify()">🚀 Открыть в Hiddify</button>
+      <button type="button" class="big-btn secondary hiddify-fallback-btn" onclick="copyHiddifySubscription('Ссылка подключения скопирована. Откройте Hiddify и нажмите «Буфер обмена».')">📋 Только скопировать ссылку</button>
+      <div class="app-hint">Если автоимпорт не сработал — нажмите «Буфер обмена» в Hiddify.</div>
     </div>
 
     <div class="app-card">
       <div class="app-top">
-        <div class="app-head"><div class="app-avatar" aria-hidden="true">APP</div><div class="app-name">Другое приложение</div></div>
+        <div class="app-head"><div class="app-avatar avatar-happ" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="3.5" width="17" height="17" rx="5" stroke="white" stroke-opacity=".85"/><path d="M8 7v10M16 7v10M8 12h8" stroke="white" stroke-width="2.1" stroke-linecap="round"/></svg></div><div class="app-name">Другое приложение</div></div>
       </div>
-      <p class="app-text">Для v2rayNG, NekoBox, Streisand и других клиентов.</p>
-      <div class="app-icons" aria-hidden="true"><span class="mini-app">v2rayNG</span><span class="mini-app">NekoBox</span><span class="mini-app">Streisand</span></div>
-      <button type="button" class="big-btn secondary" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">📋 Скопировать ссылку подключения</button>
-      {"<a class='advanced-json-link' href='" + esc(json_link) + "' target='_blank' rel='noopener'>Скачать JSON-конфиг</a><div class='advanced-note'>Расширенный вариант для ручной настройки.</div>" if json_exists else ""}
+      <p class="app-text">Для Happ, v2rayNG, NekoBox, Streisand и других клиентов.</p>
+      <div class="app-icons" aria-hidden="true"><span class="mini-app"><i>H</i>Happ</span><span class="mini-app"><i>V</i>v2rayNG</span><span class="mini-app neko"><i>猫</i>NekoBox</span><span class="mini-app streisand"><i>S</i>Streisand</span></div>
+      <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">📋 Скопировать ссылку</button>
+      {"<a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>⚙️ JSON-конфиг</a><div class='advanced-note'>Для ручной настройки.</div>" if json_exists else ""}
     </div>
     <div class="connect-footer">
       <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
@@ -1617,7 +1642,7 @@ def render_profile(slug: str):
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script>window.__hiddifyLink = {hiddify_link_js}; window.__genericCopyLink = {generic_copy_link_js}; window.__jsonLink = {json_link_js};</script>
+<script>window.__hiddifyLink = {hiddify_link_js}; window.__hiddifyProfileName = {hiddify_profile_name_js}; window.__hiddifySubscriptionLink = {hiddify_link_js}; window.__genericSubscriptionLink = {generic_copy_link_js}; window.__jsonFallbackLink = {json_link_js};</script>
 {JS}
 </body>
 </html>"""
