@@ -359,7 +359,11 @@ def public_user_path(settings):
 
 
 def public_user_url(settings):
-    return f"https://{settings['domain']}/{public_user_path(settings)}"
+    return f"https://{settings['domain']}/{public_user_path(settings)}/"
+
+
+def public_user_invite_url(settings):
+    return f"{public_user_url(settings)}?invite=1"
 
 
 def subscription_base(settings):
@@ -2006,7 +2010,7 @@ def render(message="", log="", csrf=""):
     pending_button_html, pending_modal_html = render_pending_modal_parts(pending, csrf)
 
     base_url = subscription_base(settings)
-    user_page_url = public_user_url(settings)
+    user_page_url = public_user_invite_url(settings)
 
     stats, stats_ok, stats_raw = xray_stats()
     activity = journal_activity(30)
@@ -2722,7 +2726,7 @@ class Handler(BaseHTTPRequestHandler):
 
             name = str(user.get("name", slug))
             access_code = codes.get(slug, "")
-            user_page = public_user_url(settings)
+            user_page = public_user_invite_url(settings)
             invite_text = (
                 f"🔐 VPN доступ — {name}\n\n"
                 f"Страница подключения:\n{user_page}\n\n"
@@ -2756,7 +2760,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if kind == "invite":
                 codes = load_access_codes()
-                text = f"Страница подключения: {public_user_url(settings)}\nКод доступа: {codes.get(slug, '')}"
+                text = f"Страница подключения: {public_user_invite_url(settings)}\nКод доступа: {codes.get(slug, '')}"
 
             svg = qr_svg(text)
             self.send_bytes(svg, "image/svg+xml; charset=utf-8")
