@@ -366,8 +366,6 @@ def vless_link(settings: dict, user: dict, port=None, title=None):
 
 
 def raw_vless_from_file(settings: dict, user: dict):
-    # NOTE: raw vless:// URIs cannot embed client-side routing rules.
-    # RU-direct split routing is only delivered via subscription/full JSON imports.
     path = subscription_dir(settings) / f"{user['slug']}.txt"
     if path.exists():
         text = path.read_text(encoding="utf-8").strip()
@@ -1284,42 +1282,323 @@ summary:active{
 .footer-note,.bottom-actions .copy-btn{border-radius:28px}
 .connect-modal{
   position:fixed;inset:0;display:flex;align-items:flex-end;justify-content:center;
-  background:rgba(8,10,18,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
-  opacity:0;pointer-events:none;transition:opacity .2s ease;z-index:70;padding:14px;
+  background:rgba(7,10,18,.66);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  opacity:0;pointer-events:none;transition:opacity .22s ease;z-index:70;padding:14px;
 }
 .connect-modal.open{opacity:1;pointer-events:auto}
 .connect-card{
-  width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:24px;
-  border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,rgba(24,29,45,.95),rgba(15,18,31,.97));
-  box-shadow:0 18px 50px rgba(0,0,0,.4);padding:18px;
+  width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:28px;
+  border:1px solid rgba(255,255,255,.07);
+  background:
+    radial-gradient(circle at 18% 0%,rgba(78,118,188,.10),transparent 280px),
+    linear-gradient(180deg,rgba(19,25,41,.95),rgba(11,15,26,.98));
+  box-shadow:0 18px 52px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.03);
+  padding:18px;
+  position:relative;
 }
-.connect-title{font-size:28px;font-weight:900;letter-spacing:-.02em}
-.connect-sub{margin-top:6px;color:#b9c5e8;font-size:14px;line-height:1.35}
-.app-card{margin-top:12px;border-radius:18px;border:1px solid rgba(134,167,218,.2);background:linear-gradient(170deg,rgba(31,39,58,.82),rgba(18,24,38,.88));padding:14px}
-.app-card.recommended{background:linear-gradient(165deg,rgba(43,60,88,.88),rgba(18,31,51,.9));border-color:rgba(96,164,201,.42);box-shadow:inset 0 1px 0 rgba(158,210,242,.1)}
-.app-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
-.app-head{display:flex;align-items:center;gap:10px}
-.app-avatar{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;border:1px solid rgba(255,255,255,.18);background:linear-gradient(145deg,rgba(44,56,86,.95),rgba(23,31,54,.95));overflow:hidden}
-.app-avatar svg,.app-avatar img{width:100%;height:100%;display:block;object-fit:cover}
-.app-icon-fallback{font-weight:700;font-size:16px;color:#dbe8ff}
-.recommended .app-avatar{border-color:rgba(108,172,214,.42);background:linear-gradient(145deg,rgba(51,73,109,.95),rgba(26,38,62,.95))}
-.app-pill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 12px}
-.app-icons{display:contents}
-.mini-app{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:999px;background:rgba(101,154,196,.09);border:1px solid rgba(132,186,226,.24);font-size:12px;color:#dbe5ff;line-height:1;white-space:nowrap;min-width:0}
-.mini-app svg,.mini-app img{width:18px;height:18px;display:block;opacity:.98;flex:0 0 auto}
-.manual-section{margin-top:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(132,179,217,.2);background:rgba(75,109,149,.1)}
-.manual-title{font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#b7c9e9;margin:0 0 8px}
-.json-pill{display:flex;align-items:center;justify-content:center;width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(152,186,255,.28);background:rgba(112,142,215,.12);color:#d8e6ff;font-size:14px;font-weight:700;text-decoration:none}
-.advanced-note{margin-top:6px;font-size:12px;color:#b7c9e9;line-height:1.3}
-.app-name{font-size:19px;font-weight:800}
-.app-badge{font-size:12px;font-weight:800;padding:6px 10px;border-radius:999px;background:rgba(139,181,255,.15);border:1px solid rgba(139,181,255,.34);color:#dce9ff}
-.app-text{font-size:14px;line-height:1.4;color:#d2defc;margin:0 0 12px}
-.app-hint{margin-top:8px;font-size:12px;color:#cbd8ff;line-height:1.35}
+.connect-header{display:grid;gap:6px;margin-bottom:14px;padding-right:46px}
+.connect-close{
+  position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:14px;
+  display:grid;place-items:center;border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.03);color:#d7e2fb;font-size:24px;line-height:1;
+  cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+}
+.connect-close:hover{background:rgba(255,255,255,.06);color:#fff}
+.connect-title{font-size:28px;font-weight:900;letter-spacing:-.035em;line-height:1.02}
+.connect-sub{max-width:32ch;color:#b7c4e5;font-size:14px;line-height:1.4}
+.connect-stack{display:grid;gap:14px}
+
+.app-card.recommended{
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg,rgba(35,49,77,.74),rgba(17,27,45,.80));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+  padding:16px;
+}
+.app-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}
+.app-head{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.app-avatar{
+  width:46px;height:46px;border-radius:15px;display:grid;place-items:center;flex:0 0 auto;
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(145deg,rgba(45,63,99,.88),rgba(24,35,59,.92));
+  overflow:hidden;padding:7px;box-sizing:border-box;
+}
+.app-avatar svg,.app-avatar img{width:100%;height:100%;display:block;object-fit:contain}
+.app-name{font-size:21px;font-weight:900;line-height:1.1;letter-spacing:-.03em}
+.app-badge{
+  font-size:12px;font-weight:800;padding:7px 12px;border-radius:999px;
+  background:rgba(82,167,110,.13);border:1px solid rgba(101,190,130,.24);
+  color:#dff5e6;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+}
+.app-text{font-size:14px;line-height:1.4;color:#d6e0f9;margin:0 0 13px}
+.app-hint{margin-top:10px;font-size:12px;color:#c6d3ef;line-height:1.38}
+
+.connect-card .app-card.recommended .big-btn.primary{
+  background:linear-gradient(112deg,#69a7ff 0%,#62c9ef 34%,#4edfc6 66%,#69a7ff 100%);
+  background-size:240% 240%;
+  animation:hiddifyGradientFlow 4.4s linear infinite;
+  box-shadow:0 12px 28px rgba(76,224,195,.12), 0 0 0 1px rgba(255,255,255,.03) inset;
+}
+.connect-card .app-card.recommended .big-btn.primary:hover{transform:translateY(-1px);filter:brightness(1.02)}
+@keyframes hiddifyGradientFlow{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+
+.other-connect{
+  padding:2px 2px 0;
+}
+.other-head{display:grid;gap:5px;margin-bottom:12px}
+.other-title{
+  font-size:15px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;
+  color:rgba(226,234,255,.64);
+}
+.other-copy{margin:0;color:#cbd6f0;font-size:14px;line-height:1.4}
+.app-pill-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 12px}
+.mini-app{
+  display:flex;align-items:center;gap:11px;min-width:0;
+  padding:11px 14px;border-radius:18px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.07);
+  color:#dce5fb;box-sizing:border-box;
+}
+.mini-icon{
+  width:34px;height:34px;border-radius:12px;display:grid;place-items:center;overflow:hidden;flex:0 0 auto;
+  background:rgba(255,255,255,.055);
+  box-shadow:none;
+  padding:4px;box-sizing:border-box;
+}
+.mini-icon svg,.mini-icon img{width:100%;height:100%;display:block;object-fit:contain}
+.mini-label{font-size:15px;font-weight:800;line-height:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 .big-btn.full{width:100%;display:flex;align-items:center;justify-content:center}
-.connect-footer{display:flex;justify-content:flex-end;margin-top:14px}
-.connect-footer .copy-btn{background:rgba(255,255,255,.03);border-color:rgba(194,211,243,.24);color:#c7d6f6}
-@media (max-width:430px){.app-pill-grid{grid-template-columns:1fr 1fr}.mini-app{justify-content:flex-start;padding:8px 9px;font-size:11px}}
-@media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}.connect-footer{justify-content:stretch}.connect-footer .copy-btn{width:100%}}
+.big-btn.copy-accent{
+  min-height:60px;
+  position:relative;
+  overflow:hidden;
+  background:
+    radial-gradient(circle at 50% 0%,rgba(118,165,235,.16),transparent 62%),
+    linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.035));
+  border:1px solid rgba(255,255,255,.12);
+  box-shadow:0 12px 26px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.055);
+  color:#f4f7ff;
+}
+.big-btn.copy-accent::before{
+  content:"";
+  position:absolute;
+  left:18px;
+  right:18px;
+  top:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(160,205,255,.38),transparent);
+  pointer-events:none;
+}
+.big-btn.copy-accent:hover{transform:translateY(-1px);filter:brightness(1.02)}
+@media (max-width:520px){
+  .connect-card{padding:16px}
+  .connect-close{top:12px;right:12px;width:36px;height:36px;border-radius:13px}
+  .connect-header{padding-right:44px}
+  .app-top{align-items:center}
+  .app-badge{font-size:11px;padding:6px 10px}
+  .app-pill-grid{gap:8px}
+  .mini-app{padding:10px 12px}
+  .mini-icon{width:32px;height:32px;border-radius:11px}
+  .mini-label{font-size:14px}
+}
+@media (max-width:390px){
+  .connect-title{font-size:26px}
+  .app-top{flex-wrap:wrap}
+  .app-badge{margin-left:58px}
+}
+@media (max-width:720px){.profile-title .hero-title{font-size:30px}.qr-quick{--qr-size:96px;grid-template-columns:var(--qr-size) minmax(0,1fr) 50px;gap:10px}.qr-quick .quick-title{font-size:18px}.bottom-actions{grid-template-columns:1fr}}
+
+
+.apps-section{
+  margin-top:26px;
+  padding-top:22px;
+  position:relative;
+}
+.apps-section::before{
+  content:"";
+  position:absolute;
+  top:0;
+  left:50%;
+  transform:translateX(-50%);
+  width:72%;
+  height:1px;
+  background:linear-gradient(90deg,
+    rgba(255,255,255,0),
+    rgba(255,255,255,.10),
+    rgba(255,255,255,0)
+  );
+}
+.apps-section-title{
+  margin:0 0 10px 0;
+  text-align:center;
+  font-size:18px;
+  line-height:1.15;
+  font-weight:800;
+  letter-spacing:.02em;
+  color:#eef3ff;
+}
+.apps-section-subtitle{
+  margin:0 0 18px 0;
+  text-align:center;
+  font-size:14px;
+  line-height:1.45;
+  color:rgba(232,238,255,.84);
+  max-width:460px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+
+/* final polish: other apps section */
+.other-title,
+.apps-section-title{
+  position:relative;
+  display:block;
+  text-align:center !important;
+  margin:28px auto 10px auto !important;
+  color:rgba(238,243,255,.76) !important;
+}
+
+.other-title::before,
+.apps-section-title::before{
+  content:"";
+  position:absolute;
+  top:-16px;
+  left:50%;
+  transform:translateX(-50%);
+  width:68%;
+  height:1px;
+  background:linear-gradient(90deg,
+    transparent,
+    rgba(255,255,255,.12),
+    transparent
+  );
+}
+
+.other-sub,
+.apps-section-subtitle{
+  text-align:center !important;
+  margin-left:auto !important;
+  margin-right:auto !important;
+  max-width:460px;
+}
+
+
+
+/* final-app-icons-spacing-polish */
+.other-connect{
+  margin-top:24px !important;
+  padding-top:28px !important;
+  position:relative;
+}
+.other-connect::before{
+  content:"";
+  position:absolute;
+  top:0;
+  left:50%;
+  transform:translateX(-50%);
+  width:76%;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(210,224,255,.16),transparent);
+  pointer-events:none;
+}
+.other-head{
+  display:grid;
+  gap:8px;
+  margin:0 auto 18px auto !important;
+  text-align:center;
+}
+.other-title,
+.apps-section-title{
+  margin:0 auto !important;
+  text-align:center !important;
+  font-size:16px !important;
+  line-height:1.15 !important;
+  font-weight:900 !important;
+  letter-spacing:.055em !important;
+  text-transform:uppercase !important;
+  color:rgba(238,243,255,.78) !important;
+}
+.other-title::before,
+.apps-section-title::before{
+  display:none !important;
+}
+.apps-section-subtitle,
+.other-copy{
+  margin:0 auto !important;
+  max-width:440px;
+  text-align:center !important;
+  color:rgba(221,230,252,.84) !important;
+}
+.app-pill-grid{
+  gap:11px 12px !important;
+  margin:0 2px 15px !important;
+}
+.mini-app{
+  min-height:62px;
+  padding:9px 15px !important;
+  border-radius:20px !important;
+  gap:13px !important;
+  background:linear-gradient(180deg,rgba(255,255,255,.038),rgba(255,255,255,.022)) !important;
+  border:1px solid rgba(255,255,255,.065) !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025) !important;
+}
+.mini-icon{
+  width:44px !important;
+  height:44px !important;
+  border-radius:14px !important;
+  padding:5px !important;
+  background:rgba(255,255,255,.045) !important;
+  box-shadow:none !important;
+  border:0 !important;
+}
+.mini-icon img,
+.mini-icon svg{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  display:block !important;
+}
+.mini-label{
+  font-size:15px !important;
+  font-weight:850 !important;
+  color:rgba(238,243,255,.94) !important;
+}
+.big-btn.copy-accent{
+  margin-top:4px;
+  min-height:62px !important;
+  border-radius:22px !important;
+  background:
+    radial-gradient(circle at 50% 0%,rgba(143,174,230,.18),transparent 64%),
+    linear-gradient(180deg,rgba(255,255,255,.068),rgba(255,255,255,.034)) !important;
+  border:1px solid rgba(255,255,255,.11) !important;
+  box-shadow:0 12px 28px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.052) !important;
+}
+@media (max-width:520px){
+  .other-connect{margin-top:22px !important;padding-top:26px !important}
+  .app-pill-grid{gap:10px 10px !important;margin-left:0 !important;margin-right:0 !important}
+  .mini-app{min-height:58px;padding:8px 12px !important;gap:11px !important;border-radius:18px !important}
+  .mini-icon{width:40px !important;height:40px !important;border-radius:13px !important;padding:5px !important}
+  .mini-label{font-size:14px !important}
+}
+@media (max-width:390px){
+  .mini-app{padding:8px 10px !important;gap:9px !important}
+  .mini-icon{width:38px !important;height:38px !important;border-radius:12px !important}
+  .mini-label{font-size:13px !important}
+}
+
+
+.qr-copy-nowrap{
+  white-space:nowrap!important;
+  font-size:clamp(17px,4.15vw,22px)!important;
+  padding-left:14px!important;
+  padding-right:14px!important;
+}
 
 </style>
 """
@@ -1621,7 +1900,7 @@ def render_profile(slug: str):
   </section>
 
   <div class="main-cta-wrap">
-    <button type="button" class="big-btn primary" onclick="openConnectModal()">🚀 Подключить VPN</button>
+    <button type="button" class="big-btn primary" onclick="openConnectModal()">Подключить VPN</button>
   </div>
 
   <section class="card qr-quick">
@@ -1689,36 +1968,48 @@ def render_profile(slug: str):
     <div class="qr-modal-title">QR для подключения</div>
     <div class="qr-modal-sub">QR содержит профиль подключения для импорта.</div>
     <div class="qr-modal-box"><img src="qr?kind=subscription&amp;v={qr_v}" alt="QR"></div>
-    <button type="button" class="big-btn primary" data-copy="{esc(subscription_link)}" data-ok="Ссылка подключения скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">📋 Скопировать ссылку подключения</button>
+    <button type="button" class="big-btn primary qr-copy-nowrap" data-copy="{esc(subscription_link)}" data-ok="Ссылка подключения скопирована" data-target="subscriptionProfileLink" onclick="copyFrom(this)">Скопировать ссылку подключения</button>
   </div>
 </div>
 <div class="connect-modal" id="connectModal" aria-hidden="true" onclick="if(event.target===this)closeConnectModal()">
   <div class="connect-card">
-    <div class="connect-title">Подключение VPN</div>
-    <div class="connect-sub">Быстрое подключение через Hiddify и компактный запасной вариант ниже.</div>
-
-    <div class="app-card recommended">
-      <div class="app-top">
-        <div class="app-head"><div class="app-avatar" aria-hidden="true">{hiddify_icon}</div><div class="app-name">Hiddify</div></div>
-        <div class="app-badge">Рекомендуется</div>
-      </div>
-      <p class="app-text">Быстрый импорт профиля.</p>
-      <button type="button" class="big-btn primary" onclick="openHiddify()">Открыть в Hiddify</button>
-      <div class="app-hint">Если не открылось — используйте импорт из буфера.</div>
+    <button type="button" class="connect-close" aria-label="Закрыть" onclick="closeConnectModal()">×</button>
+    <div class="connect-header">
+      <div class="connect-title">Подключение VPN</div>
+      <div class="connect-sub">Рекомендуем Hiddify. Если не сработает — скопируйте ссылку.</div>
     </div>
 
-    <div class="app-card">
-      <div class="app-top">
-        <div class="app-head"><div class="app-name">Другие приложения</div></div>
+    <div class="connect-stack">
+      <div class="app-card recommended">
+        <div class="app-top">
+          <div class="app-head">
+            <div class="app-avatar" aria-hidden="true">{hiddify_icon}</div>
+            <div class="app-name">Hiddify</div>
+          </div>
+          <div class="app-badge">Рекомендуется</div>
+        </div>
+        <p class="app-text">Быстрый импорт профиля.</p>
+        <button type="button" class="big-btn primary" onclick="openHiddify()">Открыть в Hiddify</button>
+        <div class="app-hint">Если не открылось — используйте импорт из буфера.</div>
       </div>
-      <p class="app-text">Скопируйте ссылку и импортируйте её в клиент.</p>
-      <div class="app-pill-grid" aria-hidden="true"><div class="mini-app">{happ_icon}Happ</div><div class="mini-app">{v2rayng_icon}v2rayNG</div><div class="mini-app">{nekobox_icon}NekoBox</div><div class="mini-app">{streisand_icon}Streisand</div></div>
-      <button type="button" class="big-btn secondary full" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">Скопировать ссылку</button>
-      {"<div class='manual-section'><div class='manual-title'>Ручная настройка</div><a class='json-pill' href='" + esc(json_link) + "' target='_blank' rel='noopener'>JSON-конфиг</a><div class='advanced-note'>Для ручного импорта.</div></div>" if json_exists else ""}
+
+      <div class="other-connect">
+        <div class="other-head">
+          <div class="other-title">Другие приложения</div>
+          <p class="apps-section-subtitle">Скопируйте ссылку и импортируйте её в клиент.</p>
+        </div>
+
+        <div class="app-pill-grid" aria-hidden="true">
+          <div class="mini-app"><span class="mini-icon">{happ_icon}</span><span class="mini-label">Happ</span></div>
+          <div class="mini-app"><span class="mini-icon">{v2rayng_icon}</span><span class="mini-label">v2rayNG</span></div>
+          <div class="mini-app"><span class="mini-icon">{nekobox_icon}</span><span class="mini-label">NekoBox</span></div>
+          <div class="mini-app"><span class="mini-icon">{streisand_icon}</span><span class="mini-label">Streisand</span></div>
+        </div>
+
+        <button type="button" class="big-btn secondary full copy-accent" onclick="copyProfile('Ссылка подключения скопирована. Импортируйте в приложении.')">Скопировать ссылку</button>
+      </div>
     </div>
-    <div class="connect-footer">
-      <button type="button" class="copy-btn" onclick="closeConnectModal()">Закрыть</button>
-    </div>
+
   </div>
 </div>
 <div class="toast" id="toast"></div>
