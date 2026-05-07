@@ -366,6 +366,8 @@ def vless_link(settings: dict, user: dict, port=None, title=None):
 
 
 def raw_vless_from_file(settings: dict, user: dict):
+    # NOTE: raw vless:// URIs cannot embed client-side routing rules.
+    # RU-direct split routing is only delivered via subscription/full JSON imports.
     path = subscription_dir(settings) / f"{user['slug']}.txt"
     if path.exists():
         text = path.read_text(encoding="utf-8").strip()

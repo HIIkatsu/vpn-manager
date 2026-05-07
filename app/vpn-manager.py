@@ -282,6 +282,12 @@ def build_client_routing(routes):
             "outboundTag": "direct",
             "ruleTag": "Direct Russian IPs",
         },
+        {
+            "type": "field",
+            "network": "tcp,udp",
+            "outboundTag": routes.get("default_outbound_tag", "proxy"),
+            "ruleTag": "Default route through VPN proxy",
+        },
     ]
     routing = {
         "domainStrategy": routes.get("domain_strategy", "IPIfNonMatch"),
