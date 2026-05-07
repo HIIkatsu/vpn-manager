@@ -19,51 +19,41 @@
   ],
 
   "direct_ips": [
+    "geoip:private",
     "geoip:ru"
   ],
 
   "direct_domains": [
     "regexp:.*\\.ru$",
     "regexp:.*\\.su$",
+    "regexp:.*\\.рф$",
     "regexp:.*\\.xn--p1ai$",
-    "regexp:.*\\.xn--p1acf$",
+    "geosite:private",
 
     "geosite:category-ru",
 
+    "domain:vk.com",
+    "domain:ok.ru",
+    "domain:mail.ru",
+    "domain:ya.ru",
     "domain:yandex.com",
     "domain:yandex.net",
     "domain:yastatic.net",
-    "domain:yandexcloud.net",
-    "domain:ya.ru",
-    "full:go.yandex",
-
-    "domain:ozon.ru",
-    "domain:ozonusercontent.com",
-    "domain:ozon-st.cdn.ngenix.net",
-
-    "domain:wbstatic.net",
-    "domain:wbcdn.net",
-
-    "domain:vk.com",
-    "domain:userapi.com",
-    "domain:vkuseraudio.net",
-    "domain:mycdn.me",
-
-    "domain:tbank-online.com",
+    "domain:dzen.ru",
+    "domain:tbank.ru",
+    "domain:tinkoff.ru",
     "domain:sberbank.com",
-    "domain:moex.com",
-
-    "domain:2gis.com",
-    "domain:avito.st",
-
-    "domain:beget.com",
-    "domain:megamarket.tech",
-    "domain:tildaapi.com",
-
-    "domain:onetwotrip.com",
-    "domain:ngenix.net",
-
-    "domain:tracker-api.vk-analytics.ru",
-    "domain:tracking-api.vk-analytics.ru"
+    "domain:vtb.ru",
+    "domain:alfabank.ru",
+    "domain:gazprombank.ru",
+    "domain:gosuslugi.ru",
+    "domain:mos.ru",
+    "domain:ozon.ru",
+    "domain:wildberries.ru",
+    "domain:wb.ru",
+    "domain:avito.ru",
+    "domain:okko.tv",
+    "domain:premier.one",
+    "domain:rutube.ru"
   ]
 }
