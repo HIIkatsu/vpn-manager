@@ -1,6 +1,5 @@
 {
   "name": "RU direct, others proxy",
-
   "private_ips": [
     "0.0.0.0/8",
     "10.0.0.0/8",
@@ -13,47 +12,82 @@
     "fc00::/7",
     "fe80::/10"
   ],
-
   "direct_protocols": [
     "bittorrent"
   ],
-
   "direct_ips": [
     "geoip:private",
     "geoip:ru"
   ],
-
   "direct_domains": [
+    "regexp:(^|\\.)ru$",
+    "regexp:(^|\\.)su$",
+    "regexp:(^|\\.)рф$",
+    "regexp:(^|\\.)xn--p1ai$",
     "regexp:.*\\.ru$",
     "regexp:.*\\.su$",
     "regexp:.*\\.рф$",
     "regexp:.*\\.xn--p1ai$",
     "geosite:private",
-
     "geosite:category-ru",
-
-    "domain:vk.com",
-    "domain:ok.ru",
-    "domain:mail.ru",
+    "domain:mos.ru",
+    "domain:emias.info",
+    "domain:emias.mos.ru",
+    "domain:mosgorzdrav.ru",
+    "domain:zdrav.mos.ru",
+    "domain:gosuslugi.ru",
+    "domain:esia.gosuslugi.ru",
+    "domain:gu-st.ru",
+    "domain:yandex.ru",
     "domain:ya.ru",
     "domain:yandex.com",
     "domain:yandex.net",
     "domain:yastatic.net",
-    "domain:dzen.ru",
+    "domain:yandexcloud.net",
+    "domain:vk.com",
+    "domain:vk.ru",
+    "domain:vkuseraudio.net",
+    "domain:userapi.com",
+    "domain:vk-cdn.net",
+    "domain:mail.ru",
+    "domain:my.mail.ru",
+    "domain:imgsmail.ru",
+    "domain:ok.ru",
+    "domain:odnoklassniki.ru",
     "domain:tbank.ru",
     "domain:tinkoff.ru",
+    "domain:sberbank.ru",
     "domain:sberbank.com",
     "domain:vtb.ru",
     "domain:alfabank.ru",
     "domain:gazprombank.ru",
-    "domain:gosuslugi.ru",
-    "domain:mos.ru",
     "domain:ozon.ru",
+    "domain:ozonusercontent.com",
     "domain:wildberries.ru",
     "domain:wb.ru",
+    "domain:static-basket.com",
     "domain:avito.ru",
+    "domain:avito.st",
+    "domain:cian.ru",
+    "domain:drom.ru",
+    "domain:rutube.ru",
     "domain:okko.tv",
     "domain:premier.one",
-    "domain:rutube.ru"
+    "domain:kinopoisk.ru",
+    "domain:rambler.ru",
+    "domain:lenta.ru",
+    "domain:ria.ru",
+    "domain:tass.ru",
+    "domain:rbc.ru",
+    "domain:fontanka.ru",
+    "domain:mts.ru",
+    "domain:beeline.ru",
+    "domain:megafon.ru",
+    "domain:tele2.ru",
+    "domain:nalog.gov.ru",
+    "domain:fns.ru",
+    "domain:zakupki.gov.ru",
+    "domain:mosreg.ru",
+    "domain:uslugi.mosreg.ru"
   ]
 }
