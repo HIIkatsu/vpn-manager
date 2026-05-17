@@ -10,6 +10,7 @@ EVENTS = BASE / 'invite_events.json'
 ACCESS = BASE / 'user_access.json'
 USER_SESSIONS = BASE / 'bot_user_sessions.json'
 USER_CODE_GUARD = BASE / 'bot_user_code_guard.json'
+OFFSET_FILE = BASE / 'bot_offset.json'
 PENDING = {}
 USERS_PAGE_SIZE = 6
 MAX_CODE_FAILS = 5
@@ -535,12 +536,17 @@ def build_invite_message(user, settings):
 
 
 def main():
-    cfg = load_cfg(); token = cfg['bot_token']; offset = 0
+    cfg = load_cfg(); token = cfg['bot_token']
+    try:
+        offset = int(json.loads(OFFSET_FILE.read_text(encoding='utf-8')).get('offset', 0))
+    except Exception:
+        offset = 0
     while True:
         try:
             ups = api(token, 'getUpdates', {'timeout': 30, 'offset': offset}).get('result', [])
             for u in ups:
                 offset = u['update_id'] + 1
+                OFFSET_FILE.write_text(json.dumps({'offset': offset}) + '\n', encoding='utf-8')
                 m = u.get('message', {})
                 cb = u.get('callback_query', {})
                 if cb:

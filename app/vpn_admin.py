@@ -4,12 +4,14 @@ import hashlib
 import hmac
 import html
 import json
+import threading
 import os
 import re
 import secrets
 import subprocess
 import tempfile
 import time
+import fcntl
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
@@ -21,6 +23,7 @@ AUTH = BASE / "auth.json"
 ACCESS = BASE / "user_access.json"
 PENDING = BASE / "admin_pending_changes.json"
 LOGIN_RATE_LIMIT = BASE / "admin_login_rate_limit.json"
+SESSIONS = BASE / "admin_sessions.json"
 
 HOST = "127.0.0.1"
 PORT = 8010
@@ -31,6 +34,9 @@ COOKIE_PATH = "/vpn-admin/"
 VERSION = "admin-old-ui-pending-modal-v6"
 LOGIN_WINDOW_SEC = 10 * 60
 LOGIN_MAX_ATTEMPTS = 8
+JOURNAL_CACHE = {}
+JOURNAL_CACHE_LOCK = threading.Lock()
+JOURNAL_STARTED = False
 
 
 def load_json(path: Path):
@@ -40,6 +46,32 @@ def load_json(path: Path):
 def save_json(path: Path, data):
     mode = 0o600 if path.name in {"auth.json", "user_access.json", "admin_login_rate_limit.json"} else 0o640
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=mode)
+
+
+class JsonLockedFile:
+    def __init__(self, path: Path):
+        self.path = path
+        self.fh = None
+        self.data = None
+
+    def __enter__(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fh = open(self.path, "a+", encoding="utf-8")
+        fcntl.flock(self.fh.fileno(), fcntl.LOCK_EX)
+        self.fh.seek(0)
+        raw = self.fh.read().strip()
+        self.data = json.loads(raw) if raw else {}
+        return self.data
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self.fh.seek(0)
+            self.fh.truncate(0)
+            self.fh.write(json.dumps(self.data, ensure_ascii=False, indent=2) + "\n")
+            self.fh.flush()
+            os.fsync(self.fh.fileno())
+        fcntl.flock(self.fh.fileno(), fcntl.LOCK_UN)
+        self.fh.close()
 
 
 def atomic_write_text(path: Path, text: str, mode=0o640):
@@ -131,6 +163,20 @@ def make_token(username):
     return payload + "." + sign(payload)
 
 
+def load_sessions():
+    try:
+        data = load_json(SESSIONS)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def save_sessions(data):
+    save_json(SESSIONS, data)
+
+
 def verify_token(token):
     if not token or "." not in token:
         return False
@@ -145,7 +191,10 @@ def verify_token(token):
         username, exp_s = raw.rsplit(":", 1)
         if username != load_auth().get("username", "admin"):
             return False
-        return int(exp_s) >= int(time.time())
+        if int(exp_s) < int(time.time()):
+            return False
+        sessions = load_sessions()
+        return token in sessions and sessions.get(token, {}).get("username") == username
     except Exception:
         return False
 
@@ -153,7 +202,11 @@ def verify_token(token):
 def csrf_token(session_token):
     if not session_token:
         return ""
-    sig = hmac.new(auth_secret(), session_token.encode("utf-8"), hashlib.sha256).digest()
+    sessions = load_sessions()
+    nonce = sessions.get(session_token, {}).get("csrf_nonce", "")
+    if not nonce:
+        return ""
+    sig = hmac.new(auth_secret(), f"{session_token}:{nonce}".encode("utf-8"), hashlib.sha256).digest()
     return base64.urlsafe_b64encode(sig).decode().rstrip("=")
 
 
@@ -401,6 +454,22 @@ def status():
 
 
 def parse_xray_stats(raw):
+    try:
+        parsed = json.loads(raw)
+        items = parsed.get("stat", []) if isinstance(parsed, dict) else []
+        out = {}
+        for item in items:
+            name = str(item.get("name", ""))
+            m = re.match(r"user>>>(.+?)>>>traffic>>>(uplink|downlink)$", name)
+            if not m:
+                continue
+            slug, direction = m.groups()
+            out.setdefault(slug, {"uplink": 0, "downlink": 0})
+            out[slug][direction] += int(item.get("value", 0) or 0)
+        if out:
+            return out
+    except Exception:
+        pass
     result = {}
 
     try:
@@ -445,7 +514,7 @@ def parse_xray_stats(raw):
 
 def xray_stats():
     commands = [
-        ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>"],
+        ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>", "-json"],
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user"],
         ["xray", "api", "statsquery", "--server=127.0.0.1:10085"],
     ]
@@ -490,6 +559,28 @@ def journal_activity(minutes=30):
         data[slug]["last"] = ts or "—"
 
     return data
+
+
+def _journal_worker():
+    while True:
+        try:
+            data = journal_activity(minutes=30)
+            with JOURNAL_CACHE_LOCK:
+                JOURNAL_CACHE.clear()
+                JOURNAL_CACHE.update(data)
+        except Exception:
+            pass
+        time.sleep(10)
+
+
+def journal_activity_cached():
+    global JOURNAL_STARTED
+    if not JOURNAL_STARTED:
+        t = threading.Thread(target=_journal_worker, daemon=True)
+        t.start()
+        JOURNAL_STARTED = True
+    with JOURNAL_CACHE_LOCK:
+        return dict(JOURNAL_CACHE)
 
 
 def badge(ok, text):
@@ -2019,7 +2110,7 @@ def render(message="", log="", csrf=""):
     user_page_url = public_user_invite_url(settings)
 
     stats, stats_ok, stats_raw = xray_stats()
-    activity = journal_activity(30)
+    activity = journal_activity_cached()
 
     total_users = len(users)
     active_users = sum(1 for u in users if u.get("enabled", True))
@@ -2535,30 +2626,21 @@ def admin_set_user_enabled_local(slug, enabled):
     if not slug:
         return False, "slug пустой", ""
 
-    old_text = USERS.read_text(encoding="utf-8")
-
     try:
-        data = json.loads(old_text)
-        users = data.get("users", [])
+        with JsonLockedFile(USERS) as data:
+            users = data.get("users", [])
+            found = False
+            for u in users:
+                if str(u.get("slug", "")) == slug:
+                    u["enabled"] = bool(enabled)
+                    found = True
+                    break
+            if not found:
+                return False, f"Пользователь {slug} не найден", ""
+            data["users"] = users
+            return True, f"{slug}: {'включён' if enabled else 'отключён'}", ""
     except Exception as e:
         return False, "Не удалось прочитать users.json", str(e)
-
-    found = False
-    for u in users:
-        if str(u.get("slug", "")) == slug:
-            u["enabled"] = bool(enabled)
-            found = True
-            break
-
-    if not found:
-        return False, f"Пользователь {slug} не найден", ""
-
-    USERS.write_text(
-        json.dumps({"users": users}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-
-    return True, f"{slug}: {'включён' if enabled else 'отключён'}", ""
 
 
 def admin_delete_user_local_no_apply(slug):
@@ -2569,30 +2651,21 @@ def admin_delete_user_local_no_apply(slug):
     if "/" in slug or "\\" in slug or "\x00" in slug:
         return False, "Некорректный slug", ""
 
-    old_users_text = USERS.read_text(encoding="utf-8")
-
     try:
-        users_data = json.loads(old_users_text)
-        users = users_data.get("users", [])
+        with JsonLockedFile(USERS) as users_data:
+            users = users_data.get("users", [])
+            target = None
+            kept = []
+            for u in users:
+                if str(u.get("slug", "")) == slug:
+                    target = u
+                else:
+                    kept.append(u)
+            if not target:
+                return False, f"Пользователь {slug} не найден", ""
+            users_data["users"] = kept
     except Exception as e:
         return False, "Не удалось прочитать users.json", str(e)
-
-    target = None
-    kept = []
-
-    for u in users:
-        if str(u.get("slug", "")) == slug:
-            target = u
-        else:
-            kept.append(u)
-
-    if not target:
-        return False, f"Пользователь {slug} не найден", ""
-
-    USERS.write_text(
-        json.dumps({"users": kept}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
 
     try:
         access = load_access_codes()
@@ -2705,6 +2778,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/health":
                 self.send_json({"ok": True, "service": "vpn-admin", "version": VERSION})
                 return
+            token = self.get_cookie(COOKIE_NAME)
+            if token:
+                sessions = load_sessions()
+                if token in sessions:
+                    sessions.pop(token, None)
+                    save_sessions(sessions)
             self.redirect("./", [
                 ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"),
                 ("Set-Cookie", f"{COOKIE_NAME}=deleted; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax"),
@@ -2797,6 +2876,9 @@ class Handler(BaseHTTPRequestHandler):
             if check_password(username, password):
                 clear_attempts(client_ip)
                 token = make_token(username)
+                sessions = load_sessions()
+                sessions[token] = {"username": username, "csrf_nonce": secrets.token_urlsafe(24), "issued_at": int(time.time())}
+                save_sessions(sessions)
                 self.redirect("./", {
                     "Set-Cookie": f"{COOKIE_NAME}={token}; Max-Age={COOKIE_MAX_AGE}; Path={COOKIE_PATH}; HttpOnly; Secure; SameSite=Lax"
                 })
