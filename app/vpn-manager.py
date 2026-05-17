@@ -614,10 +614,12 @@ def apply_config(dry_run=False):
 
     try:
         atomic_write_json(XRAY_CONFIG, xray_config)
-        sh(["systemctl", "restart", "xray"], timeout=120)
+        reload_res = sh(["systemctl", "reload", "xray"], check=False, capture=True, timeout=120)
+        if reload_res.returncode != 0:
+            sh(["systemctl", "restart", "xray"], timeout=120)
         xray_active = sh(["systemctl", "is-active", "xray"], check=False, capture=True, timeout=30).stdout.strip()
         if xray_active != "active":
-            raise RuntimeError("xray is not active after restart")
+            raise RuntimeError("xray is not active after reload/restart")
         if not wait_for_local_port(settings["xray_port"], timeout=10.0, interval=0.4):
             print_xray_diagnostics()
             raise RuntimeError(f"xray active but port {settings['xray_port']} is not listening")
