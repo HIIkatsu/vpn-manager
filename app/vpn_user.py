@@ -1306,6 +1306,53 @@ document.addEventListener('keydown', function(e){
   if(e.key === 'Escape') hideQrModal();
 });
 
+async function handleSubscriptionRenew(event){
+  event.preventDefault();
+  const btn = event.currentTarget;
+  if(!btn || btn.disabled) return;
+
+  const userUuid = btn.dataset.userUuid || '';
+  if(!userUuid){
+    showToast('Не удалось определить пользователя. Обновите страницу.');
+    return;
+  }
+
+  const originalText = btn.textContent || 'Продлить подписку';
+  btn.disabled = true;
+  btn.textContent = 'Переход к оплате…';
+
+  try{
+    const response = await fetch('/api/payments/create', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_uuid: userUuid})
+    });
+    if(!response.ok){
+      throw new Error('bad_status');
+    }
+
+    const data = await response.json();
+    const confirmationUrl = (data && data.confirmation_url) ? String(data.confirmation_url) : '';
+    if(!confirmationUrl){
+      throw new Error('missing_confirmation_url');
+    }
+    window.location.href = confirmationUrl;
+    return;
+  }catch(e){
+    showToast('Ошибка оплаты. Проверьте интернет и попробуйте ещё раз.');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  const renewBtn = document.getElementById('renewSubscriptionBtn');
+  if(renewBtn){
+    renewBtn.addEventListener('click', handleSubscriptionRenew);
+  }
+});
+
 </script>
 """
 
