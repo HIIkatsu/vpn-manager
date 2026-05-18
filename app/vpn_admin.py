@@ -794,9 +794,13 @@ input:focus,select:focus{
 }
 .access-code{
   margin-top:4px;
-  font-size:28px;
-  font-weight:950;
-  letter-spacing:.08em;
+  font-size:15px;
+  font-weight:800;
+  word-break:break-all;
+  line-height:1.3;
+  letter-spacing:normal;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--text);
 }
 .copy-mini{
   min-width:116px;
