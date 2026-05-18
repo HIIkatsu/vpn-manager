@@ -1181,6 +1181,25 @@ summary:active{
 .profile-title .hero-title{font-size:36px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compact-sub{margin-top:6px;color:var(--muted);font-size:15px}
 .stats-card{margin-bottom:12px}
+
+.subscription-manage-card{
+  position:relative;
+  background:
+    radial-gradient(circle at 4% 0%, rgba(95,143,255,.28), transparent 13rem),
+    linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.05));
+}
+.subscription-manage-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.subscription-manage-title{font-size:24px;font-weight:950;letter-spacing:-.03em}
+.subscription-manage-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.subscription-manage-item{padding:12px;border-radius:16px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.08)}
+.subscription-manage-label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.subscription-manage-value{font-size:18px;font-weight:900}
+.subscription-manage-status.sub-active{color:var(--ok)}
+.subscription-manage-status.sub-expired{color:var(--bad)}
+.badge.sub-active{color:var(--ok);background:rgba(84,224,170,.13);border:1px solid rgba(84,224,170,.18)}
+.badge.sub-expired{color:#ffd9df;background:rgba(255,115,130,.14);border:1px solid rgba(255,115,130,.2)}
+.renew-btn{min-height:54px;font-size:17px}
+@media (max-width:720px){.subscription-manage-grid{grid-template-columns:1fr}}
 .badge{justify-self:end;width:max-content;max-width:max-content;white-space:nowrap;padding:8px 14px}
 .qr-quick{--qr-size:104px;display:grid;grid-template-columns:var(--qr-size) minmax(0,1fr) 54px;gap:12px;align-items:center}
 .qr-quick .qr-tile{width:var(--qr-size);height:var(--qr-size);box-sizing:border-box}
@@ -1372,6 +1391,10 @@ def render_profile(slug: str):
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
     expires_at_text = expires_at.strftime("%Y-%m-%d %H:%M:%S") if expires_at else ""
+    subscription_status_ru = "Активна" if not subscription_expired else "Истекла"
+    subscription_status_class = "sub-active" if not subscription_expired else "sub-expired"
+    paid_until_text = expires_at_text or "—"
+    current_user_uuid = str(user.get("uuid") or slug)
 
     traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
     down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Нет данных"
@@ -1405,6 +1428,31 @@ def render_profile(slug: str):
       </div>
       <span class="badge {esc(st['class'])}">{esc(st['badge'])}</span>
     </div>
+  </section>
+
+  <section class="card subscription-manage-card" id="subscriptionManageCard" data-subscription-user-uuid="{esc(current_user_uuid)}" data-subscription-status="{subscription_status}" data-subscription-days-left="{subscription_days_left}" data-subscription-expires-at="{esc(expires_at_text)}">
+    <div class="subscription-manage-head">
+      <div>
+        <div class="label">Подписка</div>
+        <div class="subscription-manage-title">Управление подпиской</div>
+      </div>
+      <span class="badge {subscription_status_class}">{subscription_status_ru}</span>
+    </div>
+    <div class="subscription-manage-grid">
+      <div class="subscription-manage-item">
+        <div class="subscription-manage-label">Статус</div>
+        <div class="subscription-manage-value subscription-manage-status {subscription_status_class}">{subscription_status_ru}</div>
+      </div>
+      <div class="subscription-manage-item">
+        <div class="subscription-manage-label">Оплачено до</div>
+        <div class="subscription-manage-value">{esc(paid_until_text)}</div>
+      </div>
+      <div class="subscription-manage-item">
+        <div class="subscription-manage-label">Осталось дней</div>
+        <div class="subscription-manage-value">{subscription_days_left}</div>
+      </div>
+    </div>
+    <button type="button" id="renewSubscriptionBtn" class="big-btn primary renew-btn" data-action="renew-subscription" data-user-uuid="{esc(current_user_uuid)}" data-subscription-slug="{esc(slug)}">Продлить подписку (100₽)</button>
   </section>
 
   <section class="card stats-card">
