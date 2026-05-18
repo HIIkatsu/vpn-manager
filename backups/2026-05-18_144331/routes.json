@@ -1,0 +1,59 @@
+{
+  "name": "RU direct, others proxy",
+
+  "private_ips": [
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "::1/128",
+    "fc00::/7",
+    "fe80::/10"
+  ],
+
+  "direct_protocols": [
+    "bittorrent"
+  ],
+
+  "direct_ips": [
+    "geoip:private",
+    "geoip:ru"
+  ],
+
+  "direct_domains": [
+    "regexp:.*\\.ru$",
+    "regexp:.*\\.su$",
+    "regexp:.*\\.рф$",
+    "regexp:.*\\.xn--p1ai$",
+    "geosite:private",
+
+    "geosite:category-ru",
+
+    "domain:vk.com",
+    "domain:ok.ru",
+    "domain:mail.ru",
+    "domain:ya.ru",
+    "domain:yandex.com",
+    "domain:yandex.net",
+    "domain:yastatic.net",
+    "domain:dzen.ru",
+    "domain:tbank.ru",
+    "domain:tinkoff.ru",
+    "domain:sberbank.com",
+    "domain:vtb.ru",
+    "domain:alfabank.ru",
+    "domain:gazprombank.ru",
+    "domain:gosuslugi.ru",
+    "domain:mos.ru",
+    "domain:ozon.ru",
+    "domain:wildberries.ru",
+    "domain:wb.ru",
+    "domain:avito.ru",
+    "domain:okko.tv",
+    "domain:premier.one",
+    "domain:rutube.ru"
+  ]
+}

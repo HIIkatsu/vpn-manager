@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="NekoBox icon">
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="#1f3140"/>
+  <path d="M18 40V29a14 14 0 0 1 28 0v11" fill="none" stroke="#e6f0ff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M24 32h16M26 43h12" stroke="#e6f0ff" stroke-width="4" stroke-linecap="round"/>
+</svg>

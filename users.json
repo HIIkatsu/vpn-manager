@@ -1,0 +1,53 @@
+{
+  "users": [
+    {
+      "name": "Me",
+      "slug": "me",
+      "uuid": "5955b99b-59a7-4e43-84c6-3a0ffe8a3f74",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Backup1",
+      "slug": "backup1",
+      "uuid": "97912d8f-9c38-41ad-b16b-595aff556978",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Мама",
+      "slug": "loveyou",
+      "uuid": "1edc2f6c-0491-405d-af9d-2b564c14e941",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Олег",
+      "slug": "oleg",
+      "uuid": "0d95e0ab-e27e-4aba-bf39-666948121b4c",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Ирина",
+      "slug": "irina",
+      "uuid": "4920577a-e13a-44d8-bf9f-e8cf1df7adbd",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "VladZ",
+      "slug": "vladz",
+      "uuid": "825b53fd-3b0d-4b06-b7c1-5aac63509915",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    },
+    {
+      "name": "Lovekisa",
+      "slug": "alisa",
+      "uuid": "640d0d15-1651-4b94-ab22-fe19c46cd1d4",
+      "enabled": true,
+      "title": "🇳🇱 NeuroSMM VPN"
+    }
+  ]
+}

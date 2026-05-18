@@ -1,0 +1,15 @@
+{
+  "domain": "neurosmmai.ru",
+  "server_ip": "150.251.152.174",
+  "xray_port": 8443,
+  "subscription_path": "vpn-d87a8f94adf802aa6a0f7e35",
+  "subscription_dir": "/var/www/vpn-subscriptions-d87a8f94adf802aa6a0f7e35",
+  "profile_title": "🇳🇱 NeuroSMM VPN",
+  "profile_update_interval": 12,
+
+  "sni": "www.samsung.com",
+  "reality_dest": "www.samsung.com:443",
+  "private_key": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+  "public_key": "W6j8y-6JHHAKoC_rHEX9ONUajPID_KPJ-hLUHhmBBV0",
+  "short_id": "45b6b57266629592"
+}

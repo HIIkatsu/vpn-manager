@@ -1,0 +1,199 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "api": {
+    "tag": "api",
+    "services": [
+      "StatsService"
+    ]
+  },
+  "stats": {},
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "vless-reality"
+        ],
+        "ip": [
+          "127.0.0.0/8",
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "169.254.0.0/16",
+          "::1/128",
+          "fc00::/7",
+          "fe80::/10"
+        ],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "vless-reality"
+        ],
+        "ip": [
+          "150.251.152.174"
+        ],
+        "port": "22,10085,8010,8011",
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "domain": [
+          "geosite:google",
+          "geosite:openai",
+          "geosite:anthropic",
+          "geosite:netflix",
+          "domain:chatgpt.com"
+        ],
+        "outboundTag": "proxy-ipv6"
+      },
+      {
+        "type": "field",
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "block"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "tag": "api",
+      "settings": {
+        "address": "127.0.0.1"
+      }
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 8443,
+      "protocol": "vless",
+      "tag": "vless-reality",
+      "settings": {
+        "clients": [
+          {
+            "id": "5955b99b-59a7-4e43-84c6-3a0ffe8a3f74",
+            "flow": "xtls-rprx-vision",
+            "email": "me"
+          },
+          {
+            "id": "97912d8f-9c38-41ad-b16b-595aff556978",
+            "flow": "xtls-rprx-vision",
+            "email": "backup1"
+          },
+          {
+            "id": "1edc2f6c-0491-405d-af9d-2b564c14e941",
+            "flow": "xtls-rprx-vision",
+            "email": "loveyou"
+          },
+          {
+            "id": "0d95e0ab-e27e-4aba-bf39-666948121b4c",
+            "flow": "xtls-rprx-vision",
+            "email": "oleg"
+          },
+          {
+            "id": "4920577a-e13a-44d8-bf9f-e8cf1df7adbd",
+            "flow": "xtls-rprx-vision",
+            "email": "irina"
+          },
+          {
+            "id": "825b53fd-3b0d-4b06-b7c1-5aac63509915",
+            "flow": "xtls-rprx-vision",
+            "email": "vladz"
+          },
+          {
+            "id": "640d0d15-1651-4b94-ab22-fe19c46cd1d4",
+            "flow": "xtls-rprx-vision",
+            "email": "alisa"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "sockopt": {
+          "tcpNoDelay": true,
+          "tcpKeepAliveIdle": 30,
+          "tcpKeepAliveInterval": 30
+        },
+        "realitySettings": {
+          "show": false,
+          "dest": "www.samsung.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.samsung.com"
+          ],
+          "privateKey": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+          "shortIds": [
+            "45b6b57266629592"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ],
+        "routeOnly": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "socks",
+      "tag": "proxy-ipv6",
+      "settings": {
+        "servers": [
+          {
+            "address": "45.153.20.214",
+            "port": 10121,
+            "users": [
+              {
+                "user": "j0S6zv",
+                "pass": "Ev17jc"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ]
+}
