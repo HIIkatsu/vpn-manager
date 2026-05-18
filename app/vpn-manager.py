@@ -233,11 +233,11 @@ def _render_subscription_files(settings, users):
         token = user.get("token", slug)
 
         # 1. Профиль DIRECT (Прямой Reality до сервера)
-        direct = vless_link(settings, user, p_port, f"🚀 {slug}-Direct")
+        direct = vless_link(settings, user, p_port, "🇫🇮 Direct")
         # 2. Профиль SMART (С обходом блокировок Гугла/OpenAI на сервере)
-        smart = vless_link(settings, user, p_port, f"🧠 {slug}-Smart-Proxy")
+        smart = vless_link(settings, user, p_port, "🇺🇸 USA warp")
         # 3. Профиль EMERGENCY (Задел под Cloudflare Workers для обхода белых списков)
-        emergency = f"vless://{user['uuid']}@cloudflare.com:443?type=ws&security=tls&sni={settings['domain']}#🛡️ {slug}-Чебурнет-Bypass"
+        emergency = direct.split("@")[0] + "@84.252.75.36:" + direct.split("@")[1].split(":", 1)[1].split("#")[0] + "#%F0%9F%87%B7%F0%9F%87%BA%20%D0%A7%D0%B5%D0%B1%D1%83%D1%80%D0%BD%D0%B5%D1%82%20%28FirstByte%20L4%29"
 
         # Склеиваем три конфига в единый бандл подписки
         subscription_bundle = f"{direct}\n{smart}\n{emergency}\n"
@@ -277,7 +277,7 @@ def build_user_pages_snippet(settings):
 
 def build_snippet(settings, routes):
     routing_b64 = build_client_routing(routes)
-    profile_title_b64 = "base64:" + base64.b64encode(settings.get("profile_title", "NeuroSMM VPN").encode("utf-8")).decode("ascii")
+    profile_title_b64 = "base64:" + base64.b64encode(settings.get("profile_title", "AnKo VPN").encode("utf-8")).decode("ascii")
     return f'location /{str(settings["subscription_path"]).strip("/")}/ {{\n    alias {str(settings["subscription_dir"]).rstrip("/")}/;\n    types {{\n        text/plain txt;\n        application/json json;\n    }}\n    default_type text/plain;\n    add_header profile-title "{profile_title_b64}" always;\n    add_header profile-update-interval "{int(settings.get("profile_update_interval", 12))}" always;\n    add_header update-always "true" always;\n    add_header routing "{routing_b64}" always;\n    add_header Cache-Control "no-store" always;\n}}\n'
 
 

@@ -2172,7 +2172,7 @@ def render(message="", log="", csrf=""):
     <div class="server-dock-head">
       <div>
         <div class="dock-eyebrow">Состояние сервера</div>
-        <div class="dock-title">NeuroSMM VPN работает</div>
+        <div class="dock-title">AnKo VPN работает</div>
         <div class="dock-sub">{active_users}/{total_users} пользователей включено · {total_connections} соединений за 30 минут</div>
       </div>
       <div class="dock-traffic">

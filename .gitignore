@@ -1,0 +1,42 @@
+# Python мусор
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Виртуальные окружения (твое системное и любые другие)
+venv/
+.venv/
+billing_env/
+env/
+
+# Переменные окружения и секреты (ЮKassa, ключи)
+.env
+auth.json
+user_auth.json
+bot_config.json
+settings.json
+
+# Базы данных и их логи (SQLite)
+*.db
+*.db-journal
+*.db-wal
+config/database.db
+
+# Динамические логи, сессии и кэш приложения
+admin_login_rate_limit.json
+bot_user_sessions.json
+user_access.json
+users.json
+routes.json
+admin_pending_changes.json
+
+# Локальные бэкапы
+backups/
+*.save
+*.save.*
+
+# Системные файлы
+.DS_Store
+Thumbs.db
