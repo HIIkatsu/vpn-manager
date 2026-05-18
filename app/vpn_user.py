@@ -6,7 +6,7 @@ import html
 import json
 import os
 import re
-import secrets
+import sqlite3
 import subprocess
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -14,11 +14,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 BASE = Path("/root/vpn-manager")
-USERS = BASE / "users.json"
 SETTINGS = BASE / "settings.json"
 AUTH = BASE / "auth.json"
-ACCESS = BASE / "user_access.json"
 SECRET_FILE = BASE / ".vpn_user_secret"
+DB_PATH = "/root/vpn-manager/config/database.db"
 
 HOST = "127.0.0.1"
 PORT = 8011
@@ -140,82 +139,49 @@ def verify_token(token: str):
         return ""
 
 
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def load_users():
-    data = load_json(USERS, {"users": []})
-    return data.get("users", [])
+    with get_db() as conn:
+        rows = conn.execute("SELECT username AS slug, uuid, enabled FROM users").fetchall()
+    return [dict(row) for row in rows]
 
 
 def load_settings():
     return load_json(SETTINGS)
 
 
-def make_access_code():
-    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-    while True:
-        code = "".join(secrets.choice(alphabet) for _ in range(7))
-        if not any(bad in code for bad in ("BAD", "XXX", "SEX", "FUK")):
-            return code
+def find_user(slug: str):
+    slug = str(slug or "").strip()
+    if not slug:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT username AS slug, uuid, enabled FROM users WHERE username = ? LIMIT 1",
+            (slug,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
-def load_access_codes():
-    data = load_json(ACCESS, {})
-    return data if isinstance(data, dict) else {}
-
-
-def save_access_codes(codes):
-    save_json(ACCESS, codes, mode=0o600)
-
-
-def ensure_access_codes(users=None):
-    users = users if users is not None else load_users()
-    codes = load_access_codes()
-    used = {str(v).upper() for v in codes.values()}
-    changed = False
-
-    for user in users:
-        slug = str(user.get("slug", "")).strip()
-        if not slug:
-            continue
-        current = str(codes.get(slug, "")).strip().upper()
-        if not re.fullmatch(r"[A-Z0-9]{6,10}", current):
-            while True:
-                current = make_access_code()
-                if current not in used:
-                    break
-            codes[slug] = current
-            used.add(current)
-            changed = True
-        elif codes.get(slug) != current:
-            codes[slug] = current
-            changed = True
-
-    valid_slugs = {str(u.get("slug", "")) for u in users}
-    for key in list(codes.keys()):
-        if key not in valid_slugs:
-            codes.pop(key, None)
-            changed = True
-
-    if changed:
-        save_access_codes(codes)
-    return codes
-
-
-def slug_by_code(code, users=None):
-    code = str(code or "").strip().upper().replace(" ", "")
-    if not code:
-        return ""
-    users = users if users is not None else load_users()
-    codes = ensure_access_codes(users)
-    for slug, saved in codes.items():
-        if str(saved).strip().upper() == code:
-            return slug
-
-    # Backward compatibility with old embedded codes in users.json.
-    for user in users:
-        for key in ("access_code", "public_code", "code", "login_code"):
-            if str(user.get(key, "")).strip().upper() == code:
-                return str(user.get("slug", ""))
-    return ""
+def find_user_by_code(code: str):
+    token = str(code or "").strip()
+    if not token:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT username as slug, uuid, token, enabled FROM users WHERE token = ? LIMIT 1",
+            (token,),
+        ).fetchone()
+    if not row:
+        return None
+    user = dict(row)
+    if not user.get("enabled", True):
+        return None
+    return user
 
 
 def public_user_path(settings):
@@ -247,31 +213,6 @@ def record_invite_event(slug: str, event: str, meta=None):
         save_json(INVITE_EVENTS, data)
     except Exception:
         pass
-
-def find_user(slug: str):
-    for user in load_users():
-        if str(user.get("slug", "")) == str(slug):
-            return user
-    return None
-
-
-def find_user_by_code(code: str):
-    code = str(code or "").strip()
-    if not code:
-        return None
-
-    users = load_users()
-    ensure_access_codes(users)
-
-    slug = slug_by_code(code, users)
-    if not slug:
-        return None
-
-    user = find_user(slug)
-    if not user or not user.get("enabled", True):
-        return None
-
-    return user
 
 def subscription_base(settings: dict):
     return f"https://{settings['domain']}/{str(settings['subscription_path']).strip('/')}"
@@ -1629,7 +1570,6 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(svg, "image/svg+xml; charset=utf-8", 200)
 
         if path == "/":
-            ensure_access_codes(load_users())
             slug = self.current_slug()
             if slug:
                 return self.send_html(render_profile(slug))
@@ -1642,7 +1582,6 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/login":
-            ensure_access_codes(load_users())
             form = self.read_form()
             code = (form.get("code", [""])[0] or "").strip()
             user = find_user_by_code(code)
@@ -1658,7 +1597,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ensure_access_codes(load_users())
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"vpn-user listening on http://{HOST}:{PORT}")
     server.serve_forever()
