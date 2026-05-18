@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import urllib.error
 import urllib.request
@@ -11,7 +12,7 @@ from pathlib import Path
 VPN_MANAGER_HOME = Path(os.environ.get('VPN_MANAGER_HOME', '/root/vpn-manager'))
 BASE = VPN_MANAGER_HOME
 SETTINGS = BASE / 'settings.json'
-USERS = BASE / 'users.json'
+DB_PATH = BASE / 'config/database.db'
 XRAY_CONFIG = Path('/usr/local/etc/xray/config.json')
 ROUTING_JSON = Path('/var/www/vpn/routing.json')
 
@@ -54,7 +55,6 @@ def user_path(settings):
 
 def run_check():
     settings = load_json(SETTINGS)
-    users_doc = load_json(USERS)
     subdir = Path(settings['subscription_dir'])
     domain = settings['domain']
     routing_path = subdir / 'routing.json'
@@ -98,21 +98,32 @@ def run_check():
             pass
 
     users = {}
-    for u in users_doc.get('users', []):
-        slug = str(u.get('slug', '')).strip()
-        if not slug or not u.get('enabled', True):
-            continue
-        txt = subdir / f'{slug}.txt'
-        jsn = subdir / f'{slug}.json'
-        users[slug] = {
-            'txt_exists': txt.exists(),
-            'json_exists': jsn.exists(),
-            'xray_client_exists': slug in xray_clients,
-            'ok': txt.exists() and jsn.exists() and slug in xray_clients,
-        }
+    db_alive = False
+    try:
+        with sqlite3.connect(str(DB_PATH)) as conn:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("SELECT 1 FROM users LIMIT 1").fetchone()
+            rows = conn.execute("SELECT username as slug, enabled FROM users").fetchall()
+            db_alive = True
+        for row in rows:
+            slug = str(row['slug'] or '').strip()
+            if not slug or not int(row['enabled']):
+                continue
+            txt = subdir / f'{slug}.txt'
+            jsn = subdir / f'{slug}.json'
+            users[slug] = {
+                'txt_exists': txt.exists(),
+                'json_exists': jsn.exists(),
+                'xray_client_exists': slug in xray_clients,
+                'ok': txt.exists() and jsn.exists() and slug in xray_clients,
+            }
+    except Exception:
+        pass
+    report['checks']['db'] = {'ok': db_alive}
     report['checks']['users'] = users
 
-    report['ok'] = all(v['ok'] for v in services.values()) and all(v['ok'] for v in ports.values()) and admin_ok and user_ok and route_ok and all(v['ok'] for v in users.values())
+    report['ok'] = all(v['ok'] for v in services.values()) and all(v['ok'] for v in ports.values()) and admin_ok and user_ok and route_ok and db_alive and all(v['ok'] for v in users.values())
     return report
 
 

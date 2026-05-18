@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import html
-import json, os, re, secrets, subprocess, time, traceback, unicodedata, urllib.parse, urllib.request
+import json, os, re, secrets, sqlite3, subprocess, time, traceback, unicodedata, urllib.parse, urllib.request
 from pathlib import Path
 
 VPN_MANAGER_HOME = Path(os.environ.get('VPN_MANAGER_HOME', '/root/vpn-manager'))
 BASE = VPN_MANAGER_HOME
 CFG = BASE / 'bot_config.json'
 EVENTS = BASE / 'invite_events.json'
-ACCESS = BASE / 'user_access.json'
+DB_PATH = BASE / 'config' / 'database.db'
 USER_SESSIONS = BASE / 'bot_user_sessions.json'
 USER_CODE_GUARD = BASE / 'bot_user_code_guard.json'
 PENDING = {}
@@ -66,7 +66,7 @@ def _latin_alias(value):
 
 
 def _resolve_users(query):
-    users = json.loads((BASE / 'users.json').read_text(encoding='utf-8')).get('users', [])
+    users = load_users()
     q = str(query).strip()
     if not q:
         return [], users
@@ -88,8 +88,16 @@ def _format_user(u):
     return f"{name} ({slug})" if name else slug
 
 
+def get_db():
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def load_users():
-    return json.loads((BASE / 'users.json').read_text(encoding='utf-8')).get('users', [])
+    with get_db() as conn:
+        rows = conn.execute("SELECT username as slug, uuid, enabled, token, comment as name FROM users").fetchall()
+    return [dict(r) for r in rows]
 
 
 def find_user(query):
@@ -223,13 +231,6 @@ def public_user_path(settings):
     return sub + '-user'
 
 
-def load_access_codes():
-    if not ACCESS.exists():
-        return {}
-    data = json.loads(ACCESS.read_text(encoding='utf-8'))
-    return data if isinstance(data, dict) else {}
-
-
 def load_user_sessions():
     if not USER_SESSIONS.exists():
         return {}
@@ -355,9 +356,10 @@ def resolve_user_by_code(code):
     normalized = str(code).strip().upper()
     if not normalized:
         return None
-    for slug, value in load_access_codes().items():
-        if str(value).strip().upper() == normalized:
-            return find_user(slug)
+    with get_db() as conn:
+        row = conn.execute("SELECT username as slug FROM users WHERE UPPER(TRIM(token)) = ? AND enabled = 1 LIMIT 1", (normalized,)).fetchone()
+    if row:
+        return find_user(row['slug'])
     return None
 
 
@@ -494,7 +496,7 @@ def handle(text):
             f"<code>{html.escape(slug)}</code>",
             '',
             '📁 <b>Required files</b>',
-            'users.json: <code>found</code>',
+            'database: <code>connected</code>',
             f"{'❌ ' if not txt else ''}subscription txt: <code>{'exists' if txt else 'missing'}</code>",
             f"{'❌ ' if not js else ''}subscription json: <code>{'exists' if js else 'missing'}</code>",
             f"{'❌ ' if not routing_ok else ''}routing.json: <code>{'exists, valid' if routing_ok else 'missing/invalid'}</code>",
@@ -518,7 +520,7 @@ def handle(text):
 
 def build_invite_message(user, settings):
     slug = str(user.get('slug', '')).strip()
-    code = str(load_access_codes().get(slug, '')).strip().upper() or 'N/A'
+    code = str(user.get('token', '')).strip().upper() or 'N/A'
     code_q = urllib.parse.quote(code, safe='')
     url = f"https://{settings['domain']}/{public_user_path(settings)}/?invite=1&code={code_q}#code={code_q}"
     name = str(user.get('name', '')).strip() or slug
@@ -573,7 +575,7 @@ def main():
                                 f"TXT: <code>{html.escape(txt_url)}</code>",
                             ])
                         elif data == 'me:c':
-                            code = str(load_access_codes().get(str(user.get('slug', '')), '')).strip().upper() or 'N/A'
+                            code = str(user.get('token', '')).strip().upper() or 'N/A'
                             txt = f"<b>Your access code</b>\n<code>{html.escape(code)}</code>"
                         elif data == 'me:s':
                             txt = user_safe_check(str(user.get('slug', '')))

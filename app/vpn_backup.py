@@ -11,7 +11,7 @@ PROTECT_MARKERS = ('STABLE', 'manual', 'before-', 'codex')
 
 FILES = [
     BASE / 'vpn_manager.py', BASE / 'vpn_admin.py', BASE / 'vpn_user.py',
-    BASE / 'settings.json', BASE / 'routes.json', BASE / 'users.json', BASE / 'user_access.json',
+    BASE / 'settings.json', BASE / 'routes.json', BASE / 'config' / 'database.db',
     BASE / 'auth.json', Path('/usr/local/etc/xray/config.json'),
     Path('/etc/nginx/nginx.conf'), Path('/etc/nginx/snippets/vpn-subscriptions.conf'), Path('/etc/nginx/snippets/vpn-user-pages.conf')
 ]

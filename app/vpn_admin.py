@@ -16,10 +16,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 BASE = Path("/root/vpn-manager")
-USERS = BASE / "users.json"
 SETTINGS = BASE / "settings.json"
 AUTH = BASE / "auth.json"
-ACCESS = BASE / "user_access.json"
 PENDING = BASE / "admin_pending_changes.json"
 LOGIN_RATE_LIMIT = BASE / "admin_login_rate_limit.json"
 DB_PATH = BASE / "config/database.db"
@@ -48,7 +46,7 @@ def load_json(path: Path):
 
 
 def save_json(path: Path, data):
-    mode = 0o600 if path.name in {"auth.json", "user_access.json", "admin_login_rate_limit.json"} else 0o640
+    mode = 0o600 if path.name in {"auth.json", "admin_login_rate_limit.json"} else 0o640
     atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n", mode=mode)
 
 
@@ -209,36 +207,6 @@ def clear_attempts(ip):
     if ip in data:
         data.pop(ip, None)
         save_rate_limit(data)
-
-
-def load_access_codes():
-    try:
-        with get_db() as conn:
-            rows = conn.execute("SELECT username, token FROM users").fetchall()
-            return {r["username"]: r["token"] for r in rows}
-    except Exception:
-        return {}
-
-
-def save_access_codes(codes):
-    save_json(ACCESS, codes)
-
-
-def make_access_code():
-    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-    while True:
-        code = "".join(secrets.choice(alphabet) for _ in range(7))
-        if not any(bad in code for bad in ("BAD", "XXX", "SEX", "FUK")):
-            return code
-
-
-def ensure_access_codes(users):
-    try:
-        with get_db() as conn:
-            rows = conn.execute("SELECT username, token FROM users").fetchall()
-            return {r["username"]: r["token"] for r in rows}
-    except Exception:
-        return {}
 
 
 def rotate_access_code(slug):
@@ -2000,7 +1968,7 @@ def render_invite_page(user, invite_text, user_page_url, access_code):
 def render(message="", log="", csrf=""):
     users = load_users()
     settings = load_settings()
-    access_codes = ensure_access_codes(users)
+    access_codes = {str(u.get("slug", "")): str(u.get("token", "")) for u in users}
     st = status()
     pending = load_pending_changes()
     pending_count = len(pending.get("changes", []))
@@ -2285,296 +2253,6 @@ def render(message="", log="", csrf=""):
 </html>"""
 
 
-def admin_delete_user_everywhere(slug):
-    slug = str(slug or "").strip()
-    if not slug:
-        return False, "slug пустой", ""
-
-    old_users_text = USERS.read_text()
-    old_users_data = json.loads(old_users_text)
-    old_users = old_users_data.get("users", [])
-
-    target = None
-    new_users = []
-    for u in old_users:
-        if str(u.get("slug")) == slug:
-            target = u
-        else:
-            new_users.append(u)
-
-    if not target:
-        return False, f"Пользователь {slug} не найден", ""
-
-    old_access_text = ""
-    access_data = {}
-    try:
-        if ACCESS.exists():
-            old_access_text = ACCESS.read_text()
-            access_data = json.loads(old_access_text)
-    except Exception:
-        access_data = {}
-
-    new_access_data = dict(access_data)
-    new_access_data.pop(slug, None)
-
-    USERS.write_text(json.dumps({"users": new_users}, ensure_ascii=False, indent=2) + "\n")
-
-    try:
-        if "ACCESS" in globals():
-            ACCESS.write_text(json.dumps(new_access_data, ensure_ascii=False, indent=2) + "\n")
-    except Exception:
-        pass
-
-    code, out, err = run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-
-    if code != 0:
-        USERS.write_text(old_users_text)
-        try:
-            if old_access_text:
-                ACCESS.write_text(old_access_text)
-        except Exception:
-            pass
-
-        rollback_code, rollback_out, rollback_err = run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-        log = out + err + "\n\nROLLBACK:\n" + rollback_out + rollback_err
-        return False, f"Удаление {slug} отменено: apply упал, конфиг восстановлен", log
-
-    try:
-        settings = load_json(SETTINGS)
-        subdir = Path(settings.get("subscription_dir", ""))
-        if subdir.exists():
-            for suffix in (".txt", "-443.txt", "-8443.txt"):
-                f = subdir / f"{slug}{suffix}"
-                if f.exists():
-                    f.unlink()
-    except Exception as e:
-        out += f"\nПользователь удалён, но старые файлы подписки не удалось подчистить: {e}\n"
-
-    return True, f"{target.get('name', slug)} удалён", out + err
-
-
-def admin_delete_user_now(slug):
-    slug = str(slug or "").strip()
-
-    if not slug:
-        return False, "slug пустой", ""
-
-    if "/" in slug or "\\" in slug or "\x00" in slug:
-        return False, "Некорректный slug", ""
-
-    access_path = globals().get("ACCESS", BASE / "user_access.json")
-
-    old_users_text = USERS.read_text(encoding="utf-8")
-    old_access_text = access_path.read_text(encoding="utf-8") if access_path.exists() else "{}\n"
-
-    try:
-        users_data = json.loads(old_users_text)
-    except Exception as e:
-        return False, "Не удалось прочитать users.json", str(e)
-
-    users = users_data.get("users", [])
-    target = None
-    kept = []
-
-    for u in users:
-        if str(u.get("slug", "")) == slug:
-            target = u
-        else:
-            kept.append(u)
-
-    if not target:
-        return False, f"Пользователь {slug} не найден", ""
-
-    try:
-        access = json.loads(old_access_text) if old_access_text.strip() else {}
-    except Exception:
-        access = {}
-
-    access.pop(slug, None)
-    access.pop(str(target.get("name", "")), None)
-
-    USERS.write_text(
-        json.dumps({"users": kept}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-    access_path.write_text(
-        json.dumps(access, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-
-    code, out, err = run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-    log = (out or "") + (err or "")
-
-    if code != 0:
-        USERS.write_text(old_users_text, encoding="utf-8")
-        access_path.write_text(old_access_text, encoding="utf-8")
-        run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-        return False, f"Удаление {slug} отменено: apply упал", log
-
-    try:
-        settings = load_json(SETTINGS)
-        subdir = Path(settings.get("subscription_dir", ""))
-        if subdir.exists():
-            for suffix in (".txt", "-443.txt", "-8443.txt"):
-                f = subdir / f"{slug}{suffix}"
-                if f.exists():
-                    f.unlink()
-    except Exception as e:
-        log += f"\ncleanup warning: {e}"
-
-    return True, f"{target.get('name', slug)} удалён", log
-
-
-
-def admin_delete_user_force(slug):
-    slug = str(slug or "").strip()
-
-    if not slug:
-        return False, "slug пустой", ""
-
-    if "/" in slug or "\\" in slug or "\x00" in slug:
-        return False, "Некорректный slug", ""
-
-    access_path = globals().get("ACCESS", BASE / "user_access.json")
-
-    old_users_text = USERS.read_text(encoding="utf-8")
-    old_access_text = access_path.read_text(encoding="utf-8") if access_path.exists() else "{}\n"
-
-    try:
-        users_data = json.loads(old_users_text)
-        users = users_data.get("users", [])
-    except Exception as e:
-        return False, "Не удалось прочитать users.json", str(e)
-
-    target = None
-    kept = []
-
-    for u in users:
-        if str(u.get("slug", "")) == slug:
-            target = u
-        else:
-            kept.append(u)
-
-    if not target:
-        return False, f"Пользователь {slug} не найден", ""
-
-    try:
-        access = json.loads(old_access_text) if old_access_text.strip() else {}
-    except Exception:
-        access = {}
-
-    access.pop(slug, None)
-    access.pop(str(target.get("name", "")), None)
-
-    USERS.write_text(
-        json.dumps({"users": kept}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-
-    access_path.write_text(
-        json.dumps(access, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-
-    code, out, err = run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-    log = (out or "") + (err or "")
-
-    if code != 0:
-        USERS.write_text(old_users_text, encoding="utf-8")
-        access_path.write_text(old_access_text, encoding="utf-8")
-        run(["python3", "/root/vpn-manager/app/vpn-manager.py", "apply"], timeout=180)
-        return False, f"Удаление {slug} отменено: apply упал", log
-
-    try:
-        settings = load_settings()
-        subdir = Path(settings.get("subscription_dir", ""))
-        if subdir.exists():
-            for suffix in (".txt", "-443.txt", "-8443.txt"):
-                f = subdir / f"{slug}{suffix}"
-                if f.exists():
-                    f.unlink()
-    except Exception as e:
-        log += f"\ncleanup warning: {e}"
-
-    return True, f"{target.get('name', slug)} удалён", log
-
-
-
-def admin_async_apply_later(reason=""):
-    """
-    Запускает vpn-manager apply после ответа браузеру.
-    Нужна задержка, потому что apply может перезапустить Xray и оборвать VPN-туннель.
-    """
-    log = BASE / "admin_async_apply.log"
-    safe_reason = re.sub(r"[^a-zA-Z0-9а-яА-Я_.: -]+", "_", str(reason))[:120]
-    cmd = (
-        "sleep 5; "
-        f"echo '\n===== $(date) {safe_reason} =====' >> {log}; "
-        f"vpn-manager apply >> {log} 2>&1"
-    )
-    subprocess.Popen(
-        ["bash", "-lc", cmd],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-
-def admin_set_user_enabled_local(slug, enabled):
-    slug = str(slug or "").strip()
-    val = 1 if enabled else 0
-    with get_db() as conn:
-        res = conn.execute("UPDATE users SET enabled = ? WHERE username = ?", (val, slug))
-        conn.commit()
-        if res.rowcount == 0:
-            return False, "Not found", ""
-    return True, f"{slug}: {'включён' if enabled else 'отключён'}", ""
-
-
-def admin_delete_user_local_no_apply(slug):
-    slug = str(slug or "").strip()
-    if not slug:
-        return False, "slug пустой", ""
-
-    if "/" in slug or "\\" in slug or "\x00" in slug:
-        return False, "Некорректный slug", ""
-
-    old_users_text = USERS.read_text(encoding="utf-8")
-
-    try:
-        users_data = json.loads(old_users_text)
-        users = users_data.get("users", [])
-    except Exception as e:
-        return False, "Не удалось прочитать users.json", str(e)
-
-    target = None
-    kept = []
-
-    for u in users:
-        if str(u.get("slug", "")) == slug:
-            target = u
-        else:
-            kept.append(u)
-
-    if not target:
-        return False, f"Пользователь {slug} не найден", ""
-
-    USERS.write_text(
-        json.dumps({"users": kept}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8"
-    )
-
-    try:
-        access = load_access_codes()
-        access.pop(slug, None)
-        access.pop(str(target.get("name", "")), None)
-        save_access_codes(access)
-    except Exception:
-        pass
-
-    return True, f"{target.get('name', slug)} удалён (файлы подписки будут очищены после «Применить изменения»)", ""
-
-
 class Handler(BaseHTTPRequestHandler):
     def send_bytes(self, data, content_type="text/html; charset=utf-8", status_code=200, extra_headers=None):
         self.send_response(status_code)
@@ -2689,7 +2367,7 @@ class Handler(BaseHTTPRequestHandler):
             slug = qs.get("slug", [""])[0]
             users = load_users()
             settings = load_settings()
-            codes = ensure_access_codes(users)
+            codes = {str(u.get("slug", "")): str(u.get("token", "")) for u in users}
 
             user = None
             for u in users:
@@ -2720,7 +2398,6 @@ class Handler(BaseHTTPRequestHandler):
 
             users = load_users()
             settings = load_settings()
-            ensure_access_codes(users)
 
             user = None
             for u in users:
@@ -2736,8 +2413,8 @@ class Handler(BaseHTTPRequestHandler):
             text = f"{subscription_base(settings)}/{token}.txt"
 
             if kind == "invite":
-                codes = load_access_codes()
-                text = f"Страница подключения: {public_user_invite_url(settings)}\nКод доступа: {codes.get(slug, '')}"
+                code = next((str(u.get("token", "")) for u in users if str(u.get("slug", "")) == str(slug)), "")
+                text = f"Страница подключения: {public_user_invite_url(settings)}\nКод доступа: {code}"
 
             svg = qr_svg(text)
             self.send_bytes(svg, "image/svg+xml; charset=utf-8")
@@ -2813,7 +2490,6 @@ class Handler(BaseHTTPRequestHandler):
                 actual_slug = m.group(1).strip()
 
             users = load_users()
-            ensure_access_codes(users)
             mark_pending_change("add", actual_slug or slug or name)
 
             # Без apply: новый пользователь появится в живом Xray только после кнопки «Применить изменения».
@@ -2851,12 +2527,17 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/delete-user":
             slug = f.get("slug", "").strip()
-            ok, msg, log = admin_delete_user_local_no_apply(slug)
-            if ok:
+            try:
+                with get_db() as conn:
+                    res = conn.execute("DELETE FROM users WHERE username = ?", (slug,))
+                    conn.commit()
+                if res.rowcount == 0:
+                    self.send_html(render("Пользователь не найден", csrf=self.current_csrf()))
+                    return
                 mark_pending_change("delete", slug)
                 self.redirect(f"./?v=deleted-{int(time.time())}")
-            else:
-                self.send_html(render(msg, log, csrf=self.current_csrf()))
+            except Exception as e:
+                self.send_html(render("Ошибка удаления пользователя", str(e), csrf=self.current_csrf()))
             return
 
 
@@ -2864,7 +2545,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ensure_access_codes(load_users())
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"VPN admin listening on http://{HOST}:{PORT}")
     server.serve_forever()
