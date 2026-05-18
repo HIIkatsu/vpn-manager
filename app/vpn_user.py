@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import html
 import json
+import math
 import os
 import re
 import sqlite3
@@ -1333,6 +1334,16 @@ def render_profile(slug: str):
     if not user or not user.get("enabled", True):
         return render_login("Профиль отключён или код недействителен.")
 
+    now_utc = datetime.utcnow()
+    expires_at = parse_expires_at(user.get("expires_at"))
+    subscription_expired = not expires_at or expires_at <= now_utc
+    subscription_days_left = 0
+    if not subscription_expired:
+        seconds_left = max(int((expires_at - now_utc).total_seconds()), 0)
+        # Если осталось меньше суток, но подписка ещё активна — показываем минимум 1 день.
+        subscription_days_left = max(1, math.ceil(seconds_left / 86400))
+    subscription_status = "expired" if subscription_expired else "active"
+
     all_stats, max_total, stats_ok = all_user_stats()
     info = all_stats.get(slug, {"up": 0, "down": 0, "total": 0, "connections": 0, "last": "—"})
 
@@ -1360,6 +1371,7 @@ def render_profile(slug: str):
     display_name = str(user.get("name", slug))
     location = str(user.get("location") or settings.get("server_location") or "Amsterdam · NL")
     qr_v = int(time.time())
+    expires_at_text = expires_at.strftime("%Y-%m-%d %H:%M:%S") if expires_at else ""
 
     traffic_total_text = human_bytes(total) if stats_ok else "Недоступно"
     down_text = f"↓ {human_bytes(down)}" if stats_ok else "↓ Нет данных"
@@ -1376,6 +1388,12 @@ def render_profile(slug: str):
 </head>
 <body>
 <div class="wrap">
+  <section
+    class="subscription-meta"
+    data-subscription-status="{subscription_status}"
+    data-subscription-days-left="{subscription_days_left}"
+    data-subscription-expires-at="{esc(expires_at_text)}"
+  ></section>
   <section class="card">
     <div class="profile-grid">
       <div class="profile-head">
