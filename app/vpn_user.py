@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
@@ -145,9 +146,32 @@ def get_db():
     return conn
 
 
+def parse_expires_at(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def is_user_active(user: dict):
+    if not user:
+        return False
+    if not bool(user.get("enabled", True)):
+        return False
+    expires_at = parse_expires_at(user.get("expires_at"))
+    if expires_at and expires_at < datetime.utcnow():
+        return False
+    return True
+
+
 def load_users():
     with get_db() as conn:
-        rows = conn.execute("SELECT username AS slug, uuid, enabled FROM users").fetchall()
+        rows = conn.execute(
+            "SELECT username AS slug, uuid, token, enabled, expires_at FROM users"
+        ).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -161,10 +185,15 @@ def find_user(slug: str):
         return None
     with get_db() as conn:
         row = conn.execute(
-            "SELECT username AS slug, uuid, enabled FROM users WHERE username = ? LIMIT 1",
+            "SELECT username AS slug, uuid, token, enabled, expires_at FROM users WHERE username = ? LIMIT 1",
             (slug,),
         ).fetchone()
-    return dict(row) if row else None
+    if not row:
+        return None
+    user = dict(row)
+    if not is_user_active(user):
+        return None
+    return user
 
 
 def find_user_by_code(code: str):
@@ -173,13 +202,13 @@ def find_user_by_code(code: str):
         return None
     with get_db() as conn:
         row = conn.execute(
-            "SELECT username as slug, uuid, token, enabled FROM users WHERE token = ? LIMIT 1",
+            "SELECT username as slug, uuid, token, enabled, expires_at FROM users WHERE token = ? LIMIT 1",
             (token,),
         ).fetchone()
     if not row:
         return None
     user = dict(row)
-    if not user.get("enabled", True):
+    if not is_user_active(user):
         return None
     return user
 
