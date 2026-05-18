@@ -15,11 +15,11 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-BASE = Path("/root/vpn-manager")
+BASE = Path(__file__).resolve().parent.parent
 SETTINGS = BASE / "settings.json"
 AUTH = BASE / "auth.json"
 SECRET_FILE = BASE / ".vpn_user_secret"
-DB_PATH = "/root/vpn-manager/config/database.db"
+DB_PATH = BASE / "config" / "database.db"
 
 HOST = "127.0.0.1"
 PORT = 8011
@@ -142,9 +142,12 @@ def verify_token(token: str):
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as exc:
+        raise RuntimeError(f"SQLite connection failed: {exc}") from exc
 
 
 def parse_expires_at(value):
@@ -169,10 +172,13 @@ def is_user_active(user: dict):
 
 
 def load_users():
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT username AS slug, uuid, token, enabled, expires_at FROM users"
-        ).fetchall()
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT username AS slug, uuid, token, enabled, expires_at FROM users"
+            ).fetchall()
+    except (RuntimeError, sqlite3.Error):
+        return []
     return [dict(row) for row in rows]
 
 
@@ -184,11 +190,14 @@ def find_user(slug: str):
     slug = str(slug or "").strip()
     if not slug:
         return None
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT username AS slug, uuid, token, enabled, expires_at FROM users WHERE username = ? LIMIT 1",
-            (slug,),
-        ).fetchone()
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username AS slug, uuid, token, enabled, expires_at FROM users WHERE username = ? LIMIT 1",
+                (slug,),
+            ).fetchone()
+    except (RuntimeError, sqlite3.Error):
+        return None
     if not row:
         return None
     user = dict(row)
@@ -201,11 +210,14 @@ def find_user_by_code(code: str):
     token = str(code or "").strip()
     if not token:
         return None
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT username as slug, uuid, token, enabled, expires_at FROM users WHERE token = ? LIMIT 1",
-            (token,),
-        ).fetchone()
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username as slug, uuid, token, enabled, expires_at FROM users WHERE token = ? LIMIT 1",
+                (token,),
+            ).fetchone()
+    except (RuntimeError, sqlite3.Error):
+        return None
     if not row:
         return None
     user = dict(row)
@@ -251,6 +263,29 @@ def subscription_base(settings: dict):
 def subscription_dir(settings: dict):
     # Critical fix: files live in settings["subscription_dir"], not always /var/www/<subscription_path>.
     return Path(settings.get("subscription_dir") or (Path("/var/www") / str(settings["subscription_path"]).strip("/")))
+
+
+def read_user_raw(slug: str):
+    slug = str(slug or "").strip()
+    if not slug:
+        return None
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username AS slug, uuid, token, enabled, expires_at FROM users WHERE username = ? LIMIT 1",
+                (slug,),
+            ).fetchone()
+    except (RuntimeError, sqlite3.Error):
+        return None
+    return dict(row) if row else None
+
+
+def subscription_headers_from_user(user: dict):
+    expires_at = parse_expires_at(user.get("expires_at")) if user else None
+    expire_ts = int(expires_at.timestamp()) if expires_at else 0
+    return {
+        "Subscription-Userinfo": f"upload=0; download=0; total=0; expire={expire_ts}"
+    }
 
 
 def client_host(settings: dict):
@@ -1400,7 +1435,7 @@ def render_profile(slug: str):
     if not user or not user.get("enabled", True):
         return render_login("Профиль отключён или код недействителен.")
 
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now()
     expires_at = parse_expires_at(user.get("expires_at"))
     subscription_expired = not expires_at or expires_at <= now_utc
     subscription_days_left = 0
@@ -1677,6 +1712,23 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             return self.send_json({"ok": True, "service": "vpn-user", "version": VERSION})
+
+        sub_match = re.match(r"^/sub/([A-Za-z0-9_\-]+)\.(txt|json)$", path)
+        if sub_match:
+            slug, ext = sub_match.groups()
+            user = read_user_raw(slug)
+            if not user or not is_user_active(user):
+                return self.send_bytes(b"", "text/plain; charset=utf-8", 403)
+            settings = load_settings()
+            sub_file = subscription_dir(settings) / f"{slug}.{ext}"
+            if not sub_file.exists() or not sub_file.is_file():
+                return self.send_bytes(b"", "text/plain; charset=utf-8", 404)
+            try:
+                body = sub_file.read_bytes()
+            except OSError:
+                return self.send_bytes(b"", "text/plain; charset=utf-8", 500)
+            mime = "application/json; charset=utf-8" if ext == "json" else "text/plain; charset=utf-8"
+            return self.send_bytes(body, mime, 200, headers=subscription_headers_from_user(user))
 
         if path == "/favicon.ico":
             return self.send_bytes(b"", "image/x-icon", 204)
