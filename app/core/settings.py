@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     XRAY_GRPC_HOST: str
     XRAY_GRPC_PORT: int
     WEBHOOK_URL_DOMAIN: str
+    VLESS_SNI: str
+    VLESS_PUBLIC_KEY: str
+    VLESS_SHORT_ID: str
+    VLESS_FINGERPRINT: str
 
 
 @lru_cache
