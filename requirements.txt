@@ -7,3 +7,5 @@ pydantic-settings>=2,<3
 yookassa>=3.10.0
 python-dotenv>=1.0.1
 alembic>=1.13.0
+
+apscheduler>=3.10.4
