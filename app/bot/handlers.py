@@ -2,11 +2,12 @@ import uuid
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
+from app.services.yookassa import create_payment
 
 
 router = Router()
@@ -57,5 +58,16 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
 
 
 @router.message(F.text == "Продлить подписку")
-async def renew_subscription_handler(message: Message) -> None:
-    await message.answer("Функция продления подписки будет добавлена в следующих этапах.", reply_markup=main_keyboard)
+async def renew_subscription_handler(message: Message, session: AsyncSession) -> None:
+    telegram_id = message.from_user.id
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+
+    if user is None:
+        await message.answer("Профиль не найден. Нажмите /start для регистрации.", reply_markup=main_keyboard)
+        return
+
+    confirmation_url = await create_payment(session=session, user_id=user.id, amount=299.0)
+    payment_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Оплатить", url=confirmation_url)]],
+    )
+    await message.answer("Для продления подписки оплатите счет по кнопке ниже:", reply_markup=payment_keyboard)
