@@ -22,7 +22,7 @@ async def create_payment(session: AsyncSession, user_id: int, amount: float) -> 
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": "https://t.me/tvoy_username_bota",
+            "return_url": "https://t.me/NeuroVPN_AI_bot",
         },
         "description": "Продление VPN-подписки на 30 дней",
         "metadata": {

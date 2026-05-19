@@ -71,7 +71,7 @@ async def renew_subscription_handler(message: Message, session: AsyncSession) ->
         await message.answer("Профиль не найден. Нажмите /start для регистрации.", reply_markup=main_keyboard)
         return
 
-    confirmation_url = await create_payment(session=session, user_id=user.id, amount=299.0)
+    confirmation_url = await create_payment(session=session, user_id=user.id, amount=100.0)
     payment_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="Оплатить", url=confirmation_url)]],
     )
