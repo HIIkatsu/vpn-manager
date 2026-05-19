@@ -22,8 +22,8 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
-from common.net import network_pb2 as common_dot_net_dot_network__pb2
-from common.net import address_pb2 as common_dot_net_dot_address__pb2
+from app.grpc.xray_api.common.net import network_pb2 as common_dot_net_dot_network__pb2
+from app.grpc.xray_api.common.net import address_pb2 as common_dot_net_dot_address__pb2
 
 
 DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1c\x63ommon/net/destination.proto\x12\x0fxray.common.net\x1a\x18\x63ommon/net/network.proto\x1a\x18\x63ommon/net/address.proto\"q\n\x08\x45ndpoint\x12)\n\x07network\x18\x01 \x01(\x0e\x32\x18.xray.common.net.Network\x12,\n\x07\x61\x64\x64ress\x18\x02 \x01(\x0b\x32\x1b.xray.common.net.IPOrDomain\x12\x0c\n\x04port\x18\x03 \x01(\rBO\n\x13\x63om.xray.common.netP\x01Z$github.com/xtls/xray-core/common/net\xaa\x02\x0fXray.Common.Netb\x06proto3')
