@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: vpn_v2_db
+    restart: always
+    environment:
+      POSTGRES_USER: vpn_user
+      POSTGRES_PASSWORD: vpn_robust_password
+      POSTGRES_DB: vpn_v2
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:
