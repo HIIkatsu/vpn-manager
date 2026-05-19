@@ -11,7 +11,7 @@ class UserService:
     async def get_or_create(self, telegram_id: int) -> User:
         user = await self.users.get_by_telegram_id(telegram_id)
         if user is None:
-            user = User(telegram_id=telegram_id, vless_uuid=uuid.uuid4().hex, is_active=False)
+            user = User(telegram_id=telegram_id, vless_uuid=str(uuid.uuid4()), is_active=False)
             await self.users.add(user)
         return user
 
