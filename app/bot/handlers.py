@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
+from app.services.xray import XrayService
 from app.services.yookassa import create_payment
 
 
@@ -54,6 +55,10 @@ async def profile_handler(message: Message, session: AsyncSession) -> None:
         f"UUID: {user.vless_uuid}\n"
         f"Подписка до: {sub_end_date}"
     )
+
+    if user.is_active:
+        vless_link = XrayService.generate_vless_link(user.vless_uuid)
+        profile_text += f"\nVLESS ссылка:\n{vless_link}"
     await message.answer(profile_text, reply_markup=main_keyboard)
 
 

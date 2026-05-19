@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     XRAY_GRPC_HOST: str
     XRAY_GRPC_PORT: int
+    WEBHOOK_URL_DOMAIN: str
 
 
 @lru_cache
