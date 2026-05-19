@@ -14,6 +14,7 @@ from app.bot.core import bot, dp
 from app.core.config import settings
 from app.db.database import get_async_session
 from app.db.models import Payment, User
+from app.services.xray import XrayService
 
 
 @asynccontextmanager
@@ -78,6 +79,7 @@ async def yookassa_webhook(
         user.sub_end_date = user.sub_end_date + timedelta(days=30)
 
     await session.commit()
+    await XrayService.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
     await bot.send_message(user.telegram_id, "Ваша подписка успешно продлена!")
 
     return {"status": "ok"}
