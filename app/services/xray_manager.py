@@ -1,28 +1,42 @@
 import logging
+import grpc
+import json
 from uuid import UUID
-
 from app.core.settings import settings
+
+# Импорты восстановленных gRPC классов
+from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
+from app.grpc.xray_api.common.protocol import user_pb2
+from app.grpc.xray_api.common.serial import typed_message_pb2
 
 logger = logging.getLogger(__name__)
 
+def _build_vless_account_message(uuid: str, flow: str = 'xtls-rprx-vision', encryption: str = 'none') -> bytes:
+    normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
+    payload = b''
+    uuid_bytes = normalized_uuid.encode('utf-8')
+    payload += b'\x0A' + bytes([len(uuid_bytes)]) + uuid_bytes
+    flow_bytes = flow.encode('utf-8')
+    payload += b'\x12' + bytes([len(flow_bytes)]) + flow_bytes
+    enc_bytes = encryption.encode('utf-8')
+    payload += b'\x1A' + bytes([len(enc_bytes)]) + enc_bytes
+    return payload
 
 class XrayManager:
-    async def add_client(self, email: str, uuid: str) -> bool:
-        """
-        Lightweight compatibility layer.
-
-        We intentionally avoid gRPC/protobuf runtime dependencies in production
-        because they regularly break deployment in constrained environments.
-        For VLESS subscription flow, UUID-based links are enough for access,
-        so this method is idempotent and treated as successful.
-        """
+    def __init__(self):
+        # Авто-поиск порта API и тега Inbound'а из конфига Xray
+        self.target = "127.0.0.1:8080"
+        self.inbound_tag = "vless"
         try:
-            normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
-            logger.info("Xray client sync skipped (grpc disabled)", extra={"email": email, "uuid": normalized_uuid})
-            return True
+            with open("/usr/local/etc/xray/config.json", "r") as f:
+                conf = json.load(f)
+                for ib in conf.get("inbounds", []):
+                    if ib.get("protocol") == "dokodemo-door":
+                        self.target = f"127.0.0.1:{ib.get('port')}"
+                    if ib.get("protocol") == "vless":
+                        self.inbound_tag = ib.get("tag", "vless")
         except Exception:
-            logger.exception("Failed to normalize UUID before Xray client sync")
-            return False
+            pass
 
     def generate_vless_link(self, uuid: str) -> str:
         normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
@@ -37,3 +51,36 @@ class XrayManager:
             "&alpn=h2%2Chttp%2F1.1"
             "&flow=xtls-rprx-vision#VPN"
         )
+
+    async def add_client(self, email: str, uuid: str) -> bool:
+        try:
+            account_bytes = _build_vless_account_message(uuid)
+            typed_account = typed_message_pb2.TypedMessage(
+                type="xray.proxy.vless.Account",
+                value=account_bytes
+            )
+            
+            user = user_pb2.User(
+                email=email,
+                account=typed_account
+            )
+            
+            operation = command_pb2.AddUserOperation(user=user)
+            op_typed = typed_message_pb2.TypedMessage(
+                type="xray.app.proxyman.command.AddUserOperation",
+                value=operation.SerializeToString()
+            )
+            
+            request = command_pb2.AlterInboundRequest(
+                tag=self.inbound_tag,
+                operation=op_typed
+            )
+            
+            async with grpc.aio.insecure_channel(self.target) as channel:
+                stub = command_pb2_grpc.HandlerServiceStub(channel)
+                await stub.AlterInbound(request)
+            return True
+        except Exception as e:
+            print(f"[gRPC ERROR] Не удалось добавить {email}: {e}")
+            logger.error(f"gRPC AddClient Error: {e}")
+            return False

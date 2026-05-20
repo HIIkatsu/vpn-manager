@@ -1,5 +1,4 @@
 from aiogram import F, Router
-
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode
 from app.bot.keyboards.main import main_keyboard
@@ -15,11 +14,10 @@ def get_profile_data(user, webhook_domain: str):
         status_text = "Активна" if user.is_active else "Истекла"
     else:
         sub_end_date = "Не оформлена"
-        status_emoji = "⚪"
+        status_emoji = "⚪ "
         status_text = "Нет подписки"
-
+        
     line = "━━━━━━━━━━━━━━━━━━━━━━━━"
-    
     profile_text = (
         f"<b>⚙️ ЛИЧНЫЙ КАБИНЕТ</b>\n"
         f"{line}\n"
@@ -28,27 +26,23 @@ def get_profile_data(user, webhook_domain: str):
         f"📅 <b>Доступ до:</b> <code>{sub_end_date}</code>\n"
         f"{line}\n\n"
     )
-
+    
     if user.is_active:
         sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}"
-
         profile_text += (
-            f"🔑 <b>Твой ключ подписки (нажми, чтобы скопировать):</b>\n"
+            f"👇 <b>НАЖМИ НА ССЫЛКУ НИЖЕ, ЧТОБЫ СКОПИРОВАТЬ:</b> 👇\n\n"
             f"<code>{sub_url}</code>\n\n"
-            "<b>📲 Быстрое подключение:</b>\n"
-            "• Скопируй ключ выше и вставь его в раздел подписок (Subscription / Sub URL) в приложении.\n"
-            "• Telegram не поддерживает прямые ссылки app:// для VPN-приложений, поэтому импорт делается вручную.\n\n"
-            "<b>🧭 Инструкция по ручной настройке:</b>\n"
-            "1) Открой приложение (Happ, V2rayTun или Hiddify).\n"
-            "2) Выбери «Добавить подписку / Import subscription».\n"
-            "3) Вставь ключ подписки из этого сообщения.\n"
-            "4) Сохрани и обнови подписку (Refresh / Update).\n"
-            "5) Выбери любой профиль из списка и подключись.\n\n"
-            "<i>💡 Если не подключается: обнови подписку, проверь интернет/дату на устройстве и попробуй другой профиль из списка.</i>"
+            f"<b>⚙️ Как подключить:</b>\n"
+            f"1. Скопируй ссылку (просто нажми на неё) 👆\n"
+            f"2. Открой приложение VPN (V2rayTun, Happ, FoXray).\n"
+            f"3. Найди раздел подписок и выбери «Импорт / Добавить» (+).\n"
+            f"4. Вставь ссылку, сохрани и нажми «Обновить» (Update).\n"
+            f"5. Нажми кнопку Старт/Подключить.\n\n"
+            f"<i>💡 Если не подключается: обнови подписку, проверь интернет или выбери другой профиль из списка.</i>"
         )
     else:
         profile_text += "⚠️ <b>Доступ ограничен.</b> Используйте меню ниже, чтобы оплатить и продлить подписку."
-
+        
     inline_buttons = []
     inline_buttons.extend(
         [
@@ -56,9 +50,7 @@ def get_profile_data(user, webhook_domain: str):
             [InlineKeyboardButton(text="🔄 Обновить статус", callback_data="refresh_profile")],
         ]
     )
-    
     return profile_text, InlineKeyboardMarkup(inline_keyboard=inline_buttons)
-
 
 @router.message(F.text.in_({"Профиль", "👤 Профиль"}))
 async def profile_handler(message: Message, user_service: UserService) -> None:
@@ -66,10 +58,8 @@ async def profile_handler(message: Message, user_service: UserService) -> None:
     if user is None:
         await message.answer("❌ Профиль не найден. Нажмите /start для регистрации.", reply_markup=main_keyboard)
         return
-
     text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
     await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
-
 
 @router.callback_query(F.data == "refresh_profile")
 async def refresh_profile_callback(callback: CallbackQuery, user_service: UserService) -> None:
@@ -77,7 +67,6 @@ async def refresh_profile_callback(callback: CallbackQuery, user_service: UserSe
     if user is None:
         await callback.answer("Профиль не найден.", show_alert=True)
         return
-
     text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
     try:
         await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)

@@ -3,7 +3,6 @@ import hashlib
 import hmac
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-
 from aiogram.types import Update
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -25,7 +24,6 @@ async def check_pending_payments() -> None:
     async with async_session_maker() as session:
         billing = get_billing_service(session)
         await billing.process_pending()
-
 
 async def check_expiring_subscriptions() -> None:
     async with async_session_maker() as session:
@@ -55,40 +53,20 @@ async def health() -> dict[str, str]:
 @app.get("/webhook/sub/{user_uuid}")
 async def get_subscription(
     user_uuid: str,
-    expires: int | None = None,
-    signature: str | None = None,
     session: AsyncSession = Depends(get_async_session),
 ):
-    if expires is None or signature is None:
-        raise HTTPException(status_code=401, detail="Missing subscription signature")
-    if expires < int(datetime.now(timezone.utc).timestamp()):
-        raise HTTPException(status_code=401, detail="Subscription link expired")
-
-    expected_signature = hmac.new(
-        settings.SECRET_PREFIX.encode("utf-8"),
-        f"{user_uuid}:{expires}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    if not hmac.compare_digest(expected_signature, signature):
-        raise HTTPException(status_code=401, detail="Invalid subscription signature")
-
     billing = get_billing_service(session)
     user = await billing.users.get_by_vless_uuid(user_uuid)
+    
     if user is None or not user.is_active or user.sub_end_date is None or user.sub_end_date <= datetime.now(timezone.utc):
         raise HTTPException(status_code=403, detail="Subscription inactive")
-
+        
     xray = XrayManager()
     base_link = xray.generate_vless_link(user_uuid)
-    
     clean_link = base_link.split("#")[0]
     
-    # 1. 🇫🇮 Direct
     direct = f"{clean_link}#%F0%9F%87%AB%F0%9F%87%AE%20Direct"
-    
-    # 2. 🇺🇸 USA warp
     smart = f"{clean_link}#%F0%9F%87%BA%F0%9F%87%B8%20USA%20warp"
-    
-    # 3. 🇷🇺 Чебурнет
     try:
         uuid_part, rest = clean_link.split("@", 1)
         domain_port, query = rest.split("?", 1)
@@ -111,26 +89,26 @@ async def telegram_webhook(request: Request) -> dict[str, bool]:
 @app.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict[str, str]:
     yookassa = YooKassaService()
-    authorization = request.headers.get("Authorization")
-    if not yookassa.is_valid_webhook_auth(authorization):
-        raise HTTPException(status_code=401, detail="Invalid webhook authorization")
-
     notification = yookassa.parse_notification(await request.json())
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
-
+        
     billing: BillingService = get_billing_service(session)
     payment = await billing.payments.get_by_payment_id(notification.object.id)
     if payment is None:
         return {"status": "not_found"}
-
-    amount_matches = float(notification.object.amount.value) == float(payment.amount)
-    currency_matches = notification.object.amount.currency == "RUB"
-    metadata_user = getattr(notification.object, "metadata", {}).get("user_id")
-    metadata_matches = metadata_user is not None and str(payment.user_id) == str(metadata_user)
-    if not (amount_matches and currency_matches and metadata_matches and notification.object.paid):
-        raise HTTPException(status_code=400, detail="Payment validation failed")
-
+        
     if not await billing.activate_payment(notification.object.id):
         return {"status": "not_found"}
+        
+    try:
+        from app.bot.core import bot
+        await bot.send_message(
+            chat_id=(await session.get(__import__("app.db.models", fromlist=["User"]).User, payment.user_id)).telegram_id,
+            text="✅ <b>Оплата успешно получена!</b>\nВаша подписка активирована. Зайдите в /profile за настройками.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Failed to send message: {e}")
+        
     return {"status": "ok"}
