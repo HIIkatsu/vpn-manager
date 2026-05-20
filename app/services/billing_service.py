@@ -52,8 +52,7 @@ class BillingService:
             
         payment.status = "success"
         user.is_active = True
-        
-        from datetime import datetime, timezone, timedelta
+
         now = datetime.now(timezone.utc)
         if user.sub_end_date is None or user.sub_end_date < now:
             user.sub_end_date = now + timedelta(days=30)

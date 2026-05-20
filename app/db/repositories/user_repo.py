@@ -12,6 +12,8 @@ class UserRepository(BaseRepository[User]):
     async def get_by_telegram_id(self, telegram_id: int) -> User | None:
         return await self.session.scalar(select(User).where(User.telegram_id == telegram_id))
 
+    async def get_by_vless_uuid(self, user_uuid: str) -> User | None:
+        return await self.session.scalar(select(User).where(User.vless_uuid == user_uuid))
 
     async def get_expiring_in_days(self, days: int) -> list[User]:
         now = datetime.now(timezone.utc)
