@@ -1,5 +1,4 @@
 from aiogram import F, Router
-from urllib.parse import quote
 
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.enums import ParseMode
@@ -32,18 +31,13 @@ def get_profile_data(user, webhook_domain: str):
 
     if user.is_active:
         sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}"
-        encoded_sub_url = quote(sub_url, safe="")
-
-        hiddify_deeplink = f"hiddify://import/{encoded_sub_url}"
-        v2raytun_deeplink = f"v2raytun://install-config?url={encoded_sub_url}"
-        happ_deeplink = f"happ://add-sub?url={encoded_sub_url}"
 
         profile_text += (
             f"🔑 <b>Твой ключ подписки (нажми, чтобы скопировать):</b>\n"
             f"<code>{sub_url}</code>\n\n"
             "<b>📲 Быстрое подключение:</b>\n"
-            "• Нажми кнопку своего приложения ниже — ссылка откроется и подставится автоматически.\n"
-            "• Если приложение не открылось, скопируй ключ выше и вставь его в раздел подписок (Subscription / Sub URL).\n\n"
+            "• Скопируй ключ выше и вставь его в раздел подписок (Subscription / Sub URL) в приложении.\n"
+            "• Telegram не поддерживает прямые ссылки app:// для VPN-приложений, поэтому импорт делается вручную.\n\n"
             "<b>🧭 Инструкция по ручной настройке:</b>\n"
             "1) Открой приложение (Happ, V2rayTun или Hiddify).\n"
             "2) Выбери «Добавить подписку / Import subscription».\n"
@@ -56,15 +50,6 @@ def get_profile_data(user, webhook_domain: str):
         profile_text += "⚠️ <b>Доступ ограничен.</b> Используйте меню ниже, чтобы оплатить и продлить подписку."
 
     inline_buttons = []
-    if user.is_active:
-        inline_buttons.extend(
-            [
-                [InlineKeyboardButton(text="⚡ Открыть в Hiddify", url=hiddify_deeplink)],
-                [InlineKeyboardButton(text="⚡ Открыть в V2rayTun", url=v2raytun_deeplink)],
-                [InlineKeyboardButton(text="⚡ Открыть в Happ", url=happ_deeplink)],
-            ]
-        )
-
     inline_buttons.extend(
         [
             [InlineKeyboardButton(text="📖 Полная инструкция", url="https://telegra.ph/Instrukciya-po-nastrojke-AnKo-VPN-05-20")],
