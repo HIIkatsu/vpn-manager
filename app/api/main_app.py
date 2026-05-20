@@ -67,7 +67,7 @@ async def get_subscription(user_uuid: str):
     bundle = f"{direct}\n{smart}\n{emergency}\n"
     encoded = base64.b64encode(bundle.encode('utf-8')).decode('utf-8')
     
-    return Response(content=encoded, media_type="text/plain", headers={"Profile-Title": "8J+UpUFuS28gVlBO"})
+    return Response(content=encoded, media_type="text/plain", headers={"Profile-Title": "🔥AnKo VPN".encode("utf-8").decode("latin-1")})
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request) -> dict[str, bool]:

@@ -32,20 +32,28 @@ class BillingService:
         payment = await self.payments.get_by_payment_id(payment_id)
         if payment is None or payment.status == "success":
             return True
+        if payment.status == "processing":
+            return False # Обрубаем дублирующие сообщения от шедулера
             
+        payment.status = "processing"
+        await self.session.commit() # Мгновенный коммит спасает от гонки потоков
+        
         user = await self.users.get_by_id(payment.user_id)
         if user is None:
+            payment.status = "pending"
+            await self.session.commit()
             return False
             
-        # Пытаемся добавить клиента. XrayManager теперь не падает, если юзер уже есть
         xray_ok = await self.xray_manager.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
         if not xray_ok:
+            payment.status = "pending"
+            await self.session.commit()
             return False
             
         payment.status = "success"
         user.is_active = True
         
-        # Логика продления
+        from datetime import datetime, timezone, timedelta
         now = datetime.now(timezone.utc)
         if user.sub_end_date is None or user.sub_end_date < now:
             user.sub_end_date = now + timedelta(days=30)
@@ -53,12 +61,7 @@ class BillingService:
             user.sub_end_date += timedelta(days=30)
             
         await self.session.commit()
-        # Обновляем состояние объекта, чтобы шедулер видел изменения
-        self.session.expire(payment)
-        
-        await self.notifier.send_message(user.telegram_id, "✅ Оплата получена. Доступ выдан/продлен!")
         return True
-
     async def process_pending(self) -> None:
         pending_payments = await self.payments.get_pending()
         payment_ids = [p.payment_id for p in pending_payments]

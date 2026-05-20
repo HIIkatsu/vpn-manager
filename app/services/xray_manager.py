@@ -16,43 +16,17 @@ logger = logging.getLogger(__name__)
 _VLESS_ACCOUNT_TYPE = "xray.proxy.vless.Account"
 
 
-def _build_vless_account_message(uuid: str, flow: str = "xtls-rprx-vision", encryption: str = "none") -> bytes:
-    """Serialize xray.proxy.vless.Account without generated stubs."""
-    file_descriptor = descriptor_pb2.FileDescriptorProto()
-    file_descriptor.name = "proxy/vless/account.proto"
-    file_descriptor.package = "xray.proxy.vless"
-    file_descriptor.syntax = "proto3"
-
-    account = file_descriptor.message_type.add()
-    account.name = "Account"
-
-    field_id = account.field.add()
-    field_id.name = "id"
-    field_id.number = 1
-    field_id.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
-    field_id.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
-
-    field_flow = account.field.add()
-    field_flow.name = "flow"
-    field_flow.number = 2
-    field_flow.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
-    field_flow.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
-
-    field_encryption = account.field.add()
-    field_encryption.name = "encryption"
-    field_encryption.number = 3
-    field_encryption.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
-    field_encryption.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
-
-    pool = descriptor_pool.DescriptorPool()
-    pool.Add(file_descriptor)
-    account_descriptor = pool.FindMessageTypeByName(_VLESS_ACCOUNT_TYPE)
-    account_message = message_factory.GetMessageClass(account_descriptor)()
-    account_message.id = str(UUID(uuid)) if len(uuid) == 32 else uuid
-    account_message.flow = flow
-    account_message.encryption = encryption
-    return account_message.SerializeToString()
-
+def _build_vless_account_message(uuid: str, flow: str = 'xtls-rprx-vision', encryption: str = 'none') -> bytes:
+    from uuid import UUID
+    normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
+    payload = b''
+    uuid_bytes = normalized_uuid.encode('utf-8')
+    payload += b'\x0A' + bytes([len(uuid_bytes)]) + uuid_bytes
+    flow_bytes = flow.encode('utf-8')
+    payload += b'\x12' + bytes([len(flow_bytes)]) + flow_bytes
+    enc_bytes = encryption.encode('utf-8')
+    payload += b'\x1A' + bytes([len(enc_bytes)]) + enc_bytes
+    return payload
 
 class XrayManager:
     async def add_client(self, email: str, uuid: str) -> bool:
@@ -88,13 +62,16 @@ class XrayManager:
             return False
 
     def generate_vless_link(self, uuid: str) -> str:
+        from uuid import UUID
         normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
         return (
             f"vless://{normalized_uuid}@{settings.WEBHOOK_URL_DOMAIN}:443"
             "?type=tcp"
-            "&security=reality&flow=xtls-rprx-vision&alpn=h2,http/1.1"
+            "&security=reality"
             f"&fp={settings.VLESS_FINGERPRINT}"
             f"&pbk={settings.VLESS_PUBLIC_KEY}"
             f"&sni={settings.VLESS_SNI}"
-            f"&sid={settings.VLESS_SHORT_ID}#VPN"
+            f"&sid={settings.VLESS_SHORT_ID}"
+            "&alpn=h2%2Chttp%2F1.1"
+            "&flow=xtls-rprx-vision#VPN"
         )
