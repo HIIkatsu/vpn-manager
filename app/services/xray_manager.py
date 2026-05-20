@@ -25,7 +25,7 @@ class XrayManager:
                     )
                 )
                 request: Any = command_pb2.AlterInboundRequest(
-                    tag="vless-in",
+                    tag="vless-reality",
                     operation=typed_message_pb2.TypedMessage(
                         type="xray.app.proxyman.command.AddUserOperation",
                         value=add_user.SerializeToString(),
