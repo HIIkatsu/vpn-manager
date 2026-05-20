@@ -92,7 +92,7 @@ class XrayManager:
         return (
             f"vless://{normalized_uuid}@{settings.WEBHOOK_URL_DOMAIN}:443"
             "?type=tcp"
-            "&security=reality"
+            "&security=reality&flow=xtls-rprx-vision&alpn=h2,http/1.1"
             f"&fp={settings.VLESS_FINGERPRINT}"
             f"&pbk={settings.VLESS_PUBLIC_KEY}"
             f"&sni={settings.VLESS_SNI}"
