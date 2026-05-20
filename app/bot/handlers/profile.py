@@ -75,7 +75,7 @@ def get_profile_data(user, webhook_domain: str):
     return profile_text, InlineKeyboardMarkup(inline_keyboard=inline_buttons)
 
 
-@router.message(F.text == "Профиль")
+@router.message(F.text.in_({"Профиль", "👤 Профиль"}))
 async def profile_handler(message: Message, user_service: UserService) -> None:
     user = await user_service.get_by_telegram_id(message.from_user.id)
     if user is None:

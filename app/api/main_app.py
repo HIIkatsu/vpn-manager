@@ -23,10 +23,17 @@ async def check_pending_payments() -> None:
         billing = get_billing_service(session)
         await billing.process_pending()
 
+
+async def check_expiring_subscriptions() -> None:
+    async with async_session_maker() as session:
+        billing = get_billing_service(session)
+        await billing.notify_expiring_subscriptions(days_before=3)
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await bot.set_webhook(url=settings.WEBHOOK_URL, secret_token=settings.WEBHOOK_SECRET)
     scheduler.add_job(check_pending_payments, "interval", seconds=30, id="pending_payments_check")
+    scheduler.add_job(check_expiring_subscriptions, "cron", hour=9, minute=0, id="expiring_subscriptions_check")
     scheduler.start()
     try:
         yield

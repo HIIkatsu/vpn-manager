@@ -70,3 +70,18 @@ class BillingService:
             remote_payment = await self.yookassa_service.fetch_remote_payment(pid)
             if remote_payment.status == "succeeded":
                 await self.activate_payment(pid)
+
+
+    async def notify_expiring_subscriptions(self, days_before: int = 3) -> None:
+        expiring_users = await self.users.get_expiring_in_days(days_before)
+        for user in expiring_users:
+            try:
+                await self.notifier.send_message(
+                    chat_id=user.telegram_id,
+                    text=(
+                        f"⏰ Напоминание: подписка закончится через {days_before} дня(дней).\n"
+                        "Откройте раздел 💳 Подписка, чтобы продлить доступ без перерывов."
+                    ),
+                )
+            except Exception:
+                continue
