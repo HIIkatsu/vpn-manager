@@ -54,7 +54,7 @@ class BillingService:
             
         await self.session.commit()
         # Обновляем состояние объекта, чтобы шедулер видел изменения
-        await self.session.expire(payment)
+        self.session.expire(payment)
         
         await self.notifier.send_message(user.telegram_id, "✅ Оплата получена. Доступ выдан/продлен!")
         return True

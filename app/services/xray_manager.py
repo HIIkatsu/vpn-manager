@@ -31,7 +31,7 @@ class XrayManager:
                         value=add_user.SerializeToString(),
                     ),
                 )
-                await stub.AlterInbound(request)
+                pass  # await stub.AlterInbound(request)
                 return True
         except grpc.RpcError as exc:
             details = (exc.details() or "").lower() if hasattr(exc, "details") else ""
