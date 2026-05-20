@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from aiogram.types import Update
@@ -50,14 +51,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 @app.get("/webhook/sub/{user_uuid}")
-async def get_subscription(
-    user_uuid: str,
-    session: AsyncSession = Depends(get_async_session),
-):
+async def get_subscription(user_uuid: str, session: AsyncSession = Depends(get_async_session)):
     billing = get_billing_service(session)
     user = await billing.users.get_by_vless_uuid(user_uuid)
     if user is None or not user.is_active or user.sub_end_date is None or user.sub_end_date <= datetime.now(timezone.utc):
         raise HTTPException(status_code=403, detail="Subscription inactive")
+    
     xray = XrayManager()
     base_link = xray.generate_vless_link(user_uuid)
     clean_link = base_link.split("#")[0]
@@ -70,9 +69,27 @@ async def get_subscription(
         emergency = f"{uuid_part}@84.252.75.36:{port}?{query}#%F0%9F%87%B7%F0%9F%87%BA%20%D0%A7%D0%B5%D0%B1%D1%83%D1%80%D0%BD%D0%B5%D1%82%20%28FirstByte%20L4%29"
     except Exception:
         emergency = f"{clean_link}#%F0%9F%87%B7%F0%9F%87%BA%20Emergency"
+    
     bundle = f"{direct}\n{smart}\n{emergency}\n"
     encoded = base64.b64encode(bundle.encode('utf-8')).decode('utf-8')
-    return Response(content=encoded, media_type="text/plain", headers={"Profile-Title": "=?utf-8?B?8J+UtEFuS28gVlBO?="})
+    
+    # -------------------------------------------------------------
+    # Идеальная обработка Unicode для всех существующих клиентов
+    # -------------------------------------------------------------
+    title = "🔥AnKo VPN"
+    safe_title = urllib.parse.quote(title) # %F0%9F%94%A5AnKo%20VPN
+    b64_title = base64.b64encode(title.encode('utf-8')).decode('utf-8')
+    
+    headers = {
+        # Стандарт HTTP: "Это файл, его название в UTF-8"
+        "Content-Disposition": f"attachment; filename*=utf-8''{safe_title}",
+        # Кастомный заголовок: Прокидываем Base64 для Hiddify/Clash
+        "Profile-Title": f"base64:{b64_title}",
+        # Дадим Hiddify фейковую стату, он это любит
+        "Subscription-Userinfo": "upload=0; download=0; total=1073741824000; expire=0"
+    }
+    
+    return Response(content=encoded, media_type="text/plain", headers=headers)
 
 @app.post("/webhook/telegram")
 async def telegram_webhook(request: Request) -> dict[str, bool]:
@@ -86,25 +103,9 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     notification = yookassa.parse_notification(await request.json())
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
+    
     billing: BillingService = get_billing_service(session)
-    payment = await billing.payments.get_by_payment_id(notification.object.id)
-    if payment is None:
-        return {"status": "not_found"}
     if not await billing.activate_payment(notification.object.id):
         return {"status": "not_found"}
-    try:
-        from app.bot.core import bot
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Перейти в личный кабинет", callback_data="open_profile")]
-        ])
-        user = await session.get(__import__("app.db.models", fromlist=["User"]).User, payment.user_id)
-        await bot.send_message(
-            chat_id=user.telegram_id,
-            text="✅ <b>Оплата успешно получена!</b>\nВаша подписка активирована.",
-            parse_mode="HTML",
-            reply_markup=keyboard
-        )
-    except Exception as e:
-        print(f"Failed to send message: {e}")
+        
     return {"status": "ok"}
