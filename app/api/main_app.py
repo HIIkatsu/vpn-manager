@@ -73,19 +73,13 @@ async def get_subscription(user_uuid: str, session: AsyncSession = Depends(get_a
     bundle = f"{direct}\n{smart}\n{emergency}\n"
     encoded = base64.b64encode(bundle.encode('utf-8')).decode('utf-8')
     
-    # -------------------------------------------------------------
-    # Идеальная обработка Unicode для всех существующих клиентов
-    # -------------------------------------------------------------
     title = "🔥AnKo VPN"
-    safe_title = urllib.parse.quote(title) # %F0%9F%94%A5AnKo%20VPN
+    safe_title = urllib.parse.quote(title)
     b64_title = base64.b64encode(title.encode('utf-8')).decode('utf-8')
     
     headers = {
-        # Стандарт HTTP: "Это файл, его название в UTF-8"
         "Content-Disposition": f"attachment; filename*=utf-8''{safe_title}",
-        # Кастомный заголовок: Прокидываем Base64 для Hiddify/Clash
         "Profile-Title": f"base64:{b64_title}",
-        # Дадим Hiddify фейковую стату, он это любит
         "Subscription-Userinfo": "upload=0; download=0; total=1073741824000; expire=0"
     }
     
@@ -105,7 +99,29 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         return {"status": "ignored"}
     
     billing: BillingService = get_billing_service(session)
+    payment = await billing.payments.get_by_payment_id(notification.object.id)
+    if payment is None:
+        return {"status": "not_found"}
+        
     if not await billing.activate_payment(notification.object.id):
         return {"status": "not_found"}
+        
+    # Тот самый блок, который потерялся при фиксе Hiddify
+    try:
+        from app.bot.core import bot
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="👤 Перейти в личный кабинет", callback_data="open_profile")]
+        ])
+        user = await session.get(__import__("app.db.models", fromlist=["User"]).User, payment.user_id)
+        if user:
+            await bot.send_message(
+                chat_id=user.telegram_id,
+                text="✅ <b>Оплата успешно получена!</b>\nВаша подписка активирована.",
+                parse_mode="HTML",
+                reply_markup=keyboard
+            )
+    except Exception as e:
+        print(f"Failed to send message: {e}")
         
     return {"status": "ok"}
