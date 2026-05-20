@@ -2,14 +2,11 @@ import asyncio
 import base64
 import uuid
 from decimal import Decimal
-
 from yookassa import Configuration, Payment as YooPayment
 from yookassa.domain.notification import WebhookNotificationFactory
-
 from app.core.settings import settings
 from app.db.models import Payment
 from app.db.repositories.payment_repo import PaymentRepository
-
 
 class YooKassaService:
     def __init__(self) -> None:
@@ -36,7 +33,8 @@ class YooKassaService:
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},
             "capture": True,
-            "confirmation": {"type": "redirect", "return_url": "https://t.me/NeuroVPN_AI_bot"},
+            # Вот здесь меняем веб-ссылку на жесткий диплинк
+            "confirmation": {"type": "redirect", "return_url": "tg://resolve?domain=NeuroVPN_AI_bot"},
             "description": "Продление VPN-подписки на 30 дней",
             "metadata": {"user_id": str(user_id)},
         }
