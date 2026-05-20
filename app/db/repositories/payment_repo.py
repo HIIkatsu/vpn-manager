@@ -13,3 +13,7 @@ class PaymentRepository(BaseRepository[Payment]):
     async def get_pending(self) -> list[Payment]:
         result = await self.session.scalars(select(Payment).where(Payment.status == "pending"))
         return list(result.all())
+
+    async def get_by_payment_id_for_update(self, payment_id: str) -> Payment | None:
+        stmt = select(Payment).where(Payment.payment_id == payment_id).with_for_update()
+        return await self.session.scalar(stmt)

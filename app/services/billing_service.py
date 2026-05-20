@@ -29,14 +29,14 @@ class BillingService:
         return url
 
     async def activate_payment(self, payment_id: str) -> bool:
-        payment = await self.payments.get_by_payment_id(payment_id)
+        payment = await self.payments.get_by_payment_id_for_update(payment_id)
         if payment is None or payment.status == "success":
             return True
         if payment.status == "processing":
-            return False # Обрубаем дублирующие сообщения от шедулера
-            
+            return False
+
         payment.status = "processing"
-        await self.session.commit() # Мгновенный коммит спасает от гонки потоков
+        await self.session.flush()
         
         user = await self.users.get_by_id(payment.user_id)
         if user is None:
