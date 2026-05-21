@@ -12,6 +12,29 @@ from app.services.user_service import UserService
 router = Router()
 
 
+def build_stats_text(user) -> str:
+    now = datetime.now(timezone.utc)
+    created_at = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
+    days_in_service = max((now.date() - created_at.date()).days, 0)
+
+    sub_end_date = None
+    days_left = 0
+    if user.sub_end_date:
+        sub_end_date = user.sub_end_date if user.sub_end_date.tzinfo else user.sub_end_date.replace(tzinfo=timezone.utc)
+        days_left = max((sub_end_date.date() - now.date()).days, 0)
+
+    sub_end_human = sub_end_date.strftime("%d.%m.%Y") if sub_end_date else "—"
+
+    return (
+        "<b>Ваша статистика</b>\n"
+        f"• Дней с нами: <b>{days_in_service}</b>\n"
+        f"• Дата регистрации: <b>{created_at.strftime('%d.%m.%Y')}</b>\n"
+        f"• Осталось дней подписки: <b>{days_left}</b>\n"
+        f"• Подписка до: <b>{sub_end_human}</b>\n"
+        f"• Статус: <b>{'Активна' if user.is_active else 'Неактивна'}</b>"
+    )
+
+
 @router.message(Command("stats"))
 @router.message(F.text == "📊 Статистика")
 async def stats_handler(message: Message, user_service: UserService) -> None:
@@ -20,21 +43,7 @@ async def stats_handler(message: Message, user_service: UserService) -> None:
         await message.answer("Профиль не найден. Нажмите /start для регистрации.")
         return
 
-    now = datetime.now(timezone.utc)
-    created_at = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
-    days_in_service = max((now - created_at).days, 0)
-    days_left = 0
-    if user.sub_end_date:
-        sub_end_date = user.sub_end_date if user.sub_end_date.tzinfo else user.sub_end_date.replace(tzinfo=timezone.utc)
-        delta = sub_end_date - now
-        days_left = max(delta.days, 0)
-
-    await message.answer(
-        "<b>Ваша статистика</b>\n"
-        f"• Дней с нами: <b>{days_in_service}</b>\n"
-        f"• Осталось дней подписки: <b>{days_left}</b>\n"
-        f"• Статус: <b>{'Активна' if user.is_active else 'Неактивна'}</b>"
-    )
+    await message.answer(build_stats_text(user))
 
 
 @router.message(Command("help"))
@@ -66,21 +75,7 @@ async def stats_callback(callback: CallbackQuery, user_service: UserService) -> 
         await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
         return
 
-    now = datetime.now(timezone.utc)
-    created_at = user.created_at if user.created_at.tzinfo else user.created_at.replace(tzinfo=timezone.utc)
-    days_in_service = max((now - created_at).days, 0)
-    days_left = 0
-    if user.sub_end_date:
-        sub_end_date = user.sub_end_date if user.sub_end_date.tzinfo else user.sub_end_date.replace(tzinfo=timezone.utc)
-        delta = sub_end_date - now
-        days_left = max(delta.days, 0)
-
-    await callback.message.answer(
-        "<b>Ваша статистика</b>\n"
-        f"• Дней с нами: <b>{days_in_service}</b>\n"
-        f"• Осталось дней подписки: <b>{days_left}</b>\n"
-        f"• Статус: <b>{'Активна' if user.is_active else 'Неактивна'}</b>"
-    )
+    await callback.message.answer(build_stats_text(user))
     await callback.answer()
 
 
