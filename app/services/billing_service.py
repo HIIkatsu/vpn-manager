@@ -28,7 +28,7 @@ class BillingService:
         await self.session.commit()
         return url
 
-    async def activate_payment(self, payment_id: str) -> bool:
+    async def activate_payment(self, payment_id: str, event_id: str | None = None) -> bool:
         payment = await self.payments.get_by_payment_id_for_update(payment_id)
         if payment is None:
             return False
@@ -48,11 +48,12 @@ class BillingService:
             
         xray_ok = await self.xray_manager.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
         if not xray_ok:
-            payment.status = "pending"
-            await self.session.commit()
+            await self.session.rollback()
             return False
-            
+
         payment.status = "success"
+        if event_id:
+            payment.processed_event_id = event_id
         user.is_active = True
 
         now = datetime.now(timezone.utc)
@@ -60,7 +61,7 @@ class BillingService:
             user.sub_end_date = now + timedelta(days=30)
         else:
             user.sub_end_date += timedelta(days=30)
-            
+
         await self.session.commit()
         return True
     async def process_pending(self) -> None:

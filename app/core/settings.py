@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     YOOKASSA_SHOP_ID: str
     YOOKASSA_SECRET_KEY: str
 
+    YOOKASSA_WEBHOOK_AUTH: str | None = None
+    YOOKASSA_WEBHOOK_IP_ALLOWLIST: str = ""
+
+    SUBSCRIPTION_RATE_LIMIT_PER_MINUTE: int = 5
+    YOOKASSA_RATE_LIMIT_PER_MINUTE: int = 30
+
     XRAY_GRPC_HOST: str
     XRAY_GRPC_PORT: int
     WEBHOOK_URL_DOMAIN: str

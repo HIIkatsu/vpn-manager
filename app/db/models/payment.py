@@ -16,5 +16,6 @@ class Payment(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    processed_event_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True, index=True)
 
     user: Mapped["User"] = relationship(back_populates="payments")

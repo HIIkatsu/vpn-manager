@@ -69,7 +69,6 @@ async def refresh_profile_callback(callback: CallbackQuery, user_service: UserSe
 @router.callback_query(F.data == "open_profile")
 async def open_profile_callback(callback: CallbackQuery, user_service: UserService) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
-    from app.core.settings import settings
     if user:
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
         await callback.message.answer(text, parse_mode="HTML", reply_markup=keyboard)
