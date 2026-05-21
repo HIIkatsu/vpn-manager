@@ -39,9 +39,9 @@ async def connect_vpn_handler(message: Message, user_service: UserService) -> No
     if user.is_active:
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
         await message.answer(
-            "<b>Мгновенный импорт подписки</b>\n"
-            "Нажмите кнопку вашего приложения ниже — deeplink сразу откроет импорт.\n\n"
-            f"{text}",
+            "<b>🚀 Подключить VPN</b>\n"
+            "Это быстрый режим подключения: выберите приложение ниже, и deeplink сразу откроет импорт.\n\n"
+            "Если хотите посмотреть статус и детали подписки — откройте раздел <b>👤 Профиль</b>.",
             reply_markup=keyboard,
         )
         return
@@ -61,9 +61,9 @@ async def connect_vpn_callback(callback: CallbackQuery, user_service: UserServic
     if user.is_active:
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
         await callback.message.answer(
-            "<b>Мгновенный импорт подписки</b>\n"
-            "Нажмите кнопку вашего приложения ниже — deeplink сразу откроет импорт.\n\n"
-            f"{text}",
+            "<b>🚀 Подключить VPN</b>\n"
+            "Это быстрый режим подключения: выберите приложение ниже, и deeplink сразу откроет импорт.\n\n"
+            "Если хотите посмотреть статус и детали подписки — откройте раздел <b>👤 Профиль</b>.",
             reply_markup=keyboard,
         )
         await callback.answer()
