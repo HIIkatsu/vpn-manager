@@ -4,21 +4,24 @@ import hmac
 import urllib.parse
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from decimal import Decimal
 from aiogram.types import Update
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.core import bot, dp
 from app.core.container import get_async_session, get_billing_service
 from app.core.settings import settings
+from app.core.security import InMemoryRateLimiter, ip_in_allowlist
 from app.db.database import async_session_maker
 from app.services.billing_service import BillingService
 from app.services.yookassa_service import YooKassaService
 from app.services.xray_manager import XrayManager
 
 scheduler = AsyncIOScheduler(timezone="UTC")
+rate_limiter = InMemoryRateLimiter()
 
 async def check_pending_payments() -> None:
     async with async_session_maker() as session:
@@ -51,7 +54,11 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 @app.get("/webhook/sub/{user_uuid}")
-async def get_subscription(user_uuid: str, session: AsyncSession = Depends(get_async_session)):
+async def get_subscription(user_uuid: str, request: Request, session: AsyncSession = Depends(get_async_session)):
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.allow(f"sub:{client_ip}", settings.SUBSCRIPTION_RATE_LIMIT_PER_MINUTE, 60):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+
     billing = get_billing_service(session)
     user = await billing.users.get_by_vless_uuid(user_uuid)
     if user is None or not user.is_active or user.sub_end_date is None or user.sub_end_date <= datetime.now(timezone.utc):
@@ -93,18 +100,42 @@ async def telegram_webhook(request: Request) -> dict[str, bool]:
 
 @app.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict[str, str]:
+    client_ip = request.client.host if request.client else "unknown"
+    if not rate_limiter.allow(f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+
+    allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
+    if client_ip != "unknown" and not ip_in_allowlist(client_ip, allowlist):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
+
     yookassa = YooKassaService()
+    auth_header = request.headers.get("Authorization")
+    expected_auth = settings.YOOKASSA_WEBHOOK_AUTH or yookassa.expected_basic_auth()
+    if not auth_header or auth_header.strip() != expected_auth:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization")
+
     notification = yookassa.parse_notification(await request.json())
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
-    
+
+    payment_obj = notification.object
+    event_id = getattr(notification, "event", "") + ":" + payment_obj.id
+
     billing: BillingService = get_billing_service(session)
-    payment = await billing.payments.get_by_payment_id(notification.object.id)
+    payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
     if payment is None:
         return {"status": "not_found"}
-        
-    if not await billing.activate_payment(notification.object.id):
-        return {"status": "not_found"}
+
+    if payment.processed_event_id == event_id:
+        return {"status": "duplicate"}
+
+    if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
+    if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
+
+    if not await billing.activate_payment(payment_obj.id, event_id):
+        return {"status": "retry"}
         
     # Тот самый блок, который потерялся при фиксе Hiddify
     try:
