@@ -73,3 +73,19 @@ async def open_profile_callback(callback: CallbackQuery, user_service: UserServi
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN)
         await callback.message.answer(text, parse_mode="HTML", reply_markup=keyboard)
     await callback.answer()
+
+# Импорты дублируем тут на случай, если их нет в начале файла
+from aiogram import F
+from aiogram.types import CallbackQuery
+
+@router.callback_query(F.data == "force_check_payment")
+async def force_check_payment_callback(callback: CallbackQuery):
+    await callback.answer(
+        "⏳ Связываемся с ЮКассой...\nЕсли платеж прошел, сейчас придет уведомление.", 
+        show_alert=True
+    )
+    from app.core.container import get_billing_service
+    from app.db.database import async_session_maker
+    async with async_session_maker() as session:
+        billing = get_billing_service(session)
+        await billing.process_pending()

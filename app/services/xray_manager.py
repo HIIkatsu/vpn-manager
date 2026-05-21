@@ -3,8 +3,7 @@ import grpc
 import json
 from uuid import UUID
 from app.core.settings import settings
-
-# Импорты восстановленных gRPC классов
+# Исправленные импорты: разбили склеенную строку
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
 from app.grpc.xray_api.common.protocol import user_pb2
 from app.grpc.xray_api.common.serial import typed_message_pb2
@@ -24,7 +23,6 @@ def _build_vless_account_message(uuid: str, flow: str = 'xtls-rprx-vision', encr
 
 class XrayManager:
     def __init__(self):
-        # Авто-поиск порта API и тега Inbound'а из конфига Xray
         self.target = "127.0.0.1:8080"
         self.inbound_tag = "vless"
         try:
@@ -59,28 +57,24 @@ class XrayManager:
                 type="xray.proxy.vless.Account",
                 value=account_bytes
             )
-            
-            user = user_pb2.User(
-                email=email,
-                account=typed_account
-            )
-            
+            user = user_pb2.User(email=email, account=typed_account)
             operation = command_pb2.AddUserOperation(user=user)
             op_typed = typed_message_pb2.TypedMessage(
                 type="xray.app.proxyman.command.AddUserOperation",
                 value=operation.SerializeToString()
             )
-            
-            request = command_pb2.AlterInboundRequest(
-                tag=self.inbound_tag,
-                operation=op_typed
-            )
+            request = command_pb2.AlterInboundRequest(tag=self.inbound_tag, operation=op_typed)
             
             async with grpc.aio.insecure_channel(self.target) as channel:
                 stub = command_pb2_grpc.HandlerServiceStub(channel)
                 await stub.AlterInbound(request)
             return True
+        except grpc.RpcError as e:
+            # ТИХАЯ ОБРАБОТКА: если юзер уже есть — это успех
+            if "already exists" in str(e.details()):
+                return True
+            logger.error(f"gRPC AddClient Error for {email}: {e}")
+            return False
         except Exception as e:
-            print(f"[gRPC ERROR] Не удалось добавить {email}: {e}")
-            logger.error(f"gRPC AddClient Error: {e}")
+            logger.error(f"Unexpected error for {email}: {e}")
             return False
