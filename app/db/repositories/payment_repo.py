@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.db.models import Payment
@@ -12,6 +14,16 @@ class PaymentRepository(BaseRepository[Payment]):
 
     async def get_pending(self) -> list[Payment]:
         result = await self.session.scalars(select(Payment).where(Payment.status == "pending"))
+        return list(result.all())
+
+    async def get_pending_before(self, older_than: datetime, limit: int) -> list[Payment]:
+        stmt = (
+            select(Payment)
+            .where(Payment.status == "pending", Payment.created_at <= older_than)
+            .order_by(Payment.created_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.scalars(stmt)
         return list(result.all())
 
     async def get_by_payment_id_for_update(self, payment_id: str) -> Payment | None:
