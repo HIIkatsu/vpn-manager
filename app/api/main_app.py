@@ -1,7 +1,6 @@
 from app.services.billing_service import BillingService
 from app.core.container import get_billing_service
 import asyncio
-from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from uuid import uuid4
 import secrets
@@ -29,8 +28,7 @@ from app.services.user_service import UserService
 from app.services.xray_manager import XrayManager
 from app.services.yookassa_service import YooKassaService
 
-from app.bot.core import bot, dp
-from app.bot.handlers import router as main_router
+from app.bot.core import bot
 
 # --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
 app = FastAPI(title="AnKo VPN API")
@@ -45,71 +43,13 @@ async def get_async_session():
 
 rate_limiter = InMemoryRateLimiter()
 
-# --- ФОНОВЫЙ ВОРКЕР ---
-async def auto_expiry_checker():
-    print("🚀 Фоновый воркер запущен!")
-    while True:
-        await asyncio.sleep(1800)
-        try:
-            async with async_session_maker() as session:
-                now = datetime.now(timezone.utc).replace(tzinfo=None)
-                xray = XrayManager()
-                
-                stmt_expire = select(User).where(User.is_active == True, User.sub_end_date < now)
-                expired = (await session.execute(stmt_expire)).scalars().all()
-                for u in expired:
-                    if await xray.remove_client(email=str(u.telegram_id)):
-                        u.is_active = False
-                        msg = (
-                            "🔴 <b>Срок действия подписки завершён!</b>\n\n"
-                            "Доступ к VPN ограничен. Мы сохраним ваши настройки "
-                            "ещё на 7 дней. Вы можете продлить подписку в любой "
-                            "момент через меню бота, чтобы доступ включился автоматически."
-                        )
-                        try:
-                            await bot.send_message(chat_id=int(u.telegram_id), text=msg, parse_mode="HTML")
-                        except Exception:
-                            pass
-                            
-                deadline = now - timedelta(days=7)
-                stmt_del = select(User).where(User.is_active == False, User.sub_end_date < deadline)
-                to_delete = (await session.execute(stmt_del)).scalars().all()
-                for u in to_delete:
-                    await xray.remove_client(email=str(u.telegram_id))
-                    msg2 = (
-                        "🗑️ <b>Ваш профиль удален.</b>\n\n"
-                        "Вы не продлевали подписку более 7 дней. "
-                        "Конфигурация аннулирована. Для возвращения "
-                        "создайте профиль через команду /start."
-                    )
-                    try:
-                        await bot.send_message(chat_id=int(u.telegram_id), text=msg2, parse_mode="HTML")
-                    except Exception:
-                        pass
-                    await session.delete(u)
-                await session.commit()
-        except Exception as e:
-            print(f"Cron Error: {e}")
-
-# --- СТАРТ И СТОП СЕРВЕРА ---
+# --- СТАРТ API ПРОЦЕССА ---
 @app.on_event("startup")
 async def startup_event():
     if settings.ADMIN_USERNAME == "admin" or settings.ADMIN_PASSWORD == "admin":
         raise RuntimeError("Unsafe default admin credentials are forbidden")
     if not settings.ADMIN_USERNAME or not settings.ADMIN_PASSWORD:
         raise RuntimeError("Admin credentials must not be empty")
-    asyncio.create_task(auto_expiry_checker())
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-        asyncio.create_task(dp.start_polling(bot))
-        print("✅ Бот успешно запущен в режиме Polling!")
-    except Exception as e:
-        print(f"❌ Ошибка запуска бота: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    print("🛑 Остановка сервисов...")
-    await dp.stop_polling()
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)):

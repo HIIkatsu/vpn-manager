@@ -1,0 +1,19 @@
+[Unit]
+Description=VPN Manager Worker (Expiry Loop)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/vpn-manager
+EnvironmentFile=/opt/vpn-manager/.env
+ExecStart=/opt/vpn-manager/.venv/bin/python -m app.runtime.worker_entrypoint
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
