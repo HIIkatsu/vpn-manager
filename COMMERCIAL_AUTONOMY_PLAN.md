@@ -1,179 +1,59 @@
-# План превращения vpn-manager в автономный коммерческий продукт
+[ПЛАН ДЕЙСТВИЙ]
+Шаг 1 (Blocker Security, до релиза)
+Включить реальную проверку webhook auth (Basic/HMAC по официальной схеме YooKassa).
 
-Дата: 2026-05-21
+Убрать заглушки DummyRateLimiter и ip_in_allowlist; подключить production rate-limit и CIDR allowlist.
 
-## 1) Краткий вывод по текущему состоянию
+Запретить старт с дефолтными ADMIN_USERNAME/PASSWORD; fail-fast при небезопасной конфигурации.
 
-Проект уже содержит рабочий фундамент:
-- единый процесс FastAPI + Telegram webhook + YooKassa webhook;
-- базовые модели пользователей/платежей;
-- сценарий активации подписки после оплаты;
-- выдачу subscription bundle для клиентов.
+Ограничить /admin по сети (VPN/IP allowlist) на ingress уровне.
 
-Но в текущем виде продукт **не готов к коммерческой эксплуатации без ручного контроля** из-за критичных рисков:
-- недостаточная защищенность платежного webhook;
-- слабая защищенность URL подписки;
-- неполная идемпотентность обработки оплаты;
-- недостаточная операционная наблюдаемость и тестовое покрытие;
-- частично hardcoded значения и «хрупкие» интеграции.
+Шаг 2 (Runtime decoupling)
+Разнести процессы:
 
----
+api (FastAPI/Uvicorn),
 
-## 2) Что нужно сделать, чтобы бот стал полностью автономным
+bot (aiogram polling/webhook worker),
 
-Ниже список «обязательных» capability-блоков автономности.
+scheduler/worker (expiry, pending payments).
 
-### A. Безопасность и антифрод (обязательно до запуска продаж)
-1. Включить строгую валидацию webhook YooKassa по `Authorization` и сверку события с локальным платежом.
-2. Проверять соответствие `amount`, `currency`, `metadata.user_id`, `capture=true` перед активацией.
-3. Закрыть публичную выдачу подписки по голому UUID:
-   - подписанный URL (HMAC + TTL), либо
-   - короткоживущий access-token, либо
-   - Telegram auth-gated endpoint.
-4. Ввести rate limit для `/webhook/sub/...` и `/webhook/yookassa` + fail2ban/nginx limit.
-5. Ротация секретов и регламент (YooKassa key, bot token, webhook secret, XRAY key material).
+Убрать запуск polling/worker из FastAPI startup.
 
-### B. Платежи и биллинг уровня production
-1. Ввести полноценную state machine платежа:
-   `new -> pending -> processing -> succeeded|failed|canceled`.
-2. Добавить идемпотентность webhook-событий:
-   - таблица `processed_events` (unique event_id),
-   - transactional обработка в одной БД-транзакции.
-3. Логировать все финансовые события как audit trail (immutable log).
-4. Ввести ретраи с лимитами и dead-letter сценарии для «зависших» платежей.
-5. Поддержать возвраты/чарджбеки и корректное отключение доступа при рефанде.
+Добавить healthchecks и explicit graceful shutdown per process.
 
-### C. Автоматизация жизненного цикла подписки
-1. Авто-онбординг пользователя без ручных шагов поддержки.
-2. Автоматическое напоминание о продлении (D-7, D-3, D-1, D-0).
-3. Grace period (например 24 часа) и мягкое отключение.
-4. Автоматическое удаление клиента из Xray при окончании подписки.
-5. Автоматическое переиздание UUID по кнопке «Подозрение на утечку».
+Шаг 3 (Domain boundaries)
+Разбить main_app.py на роутеры: admin_router, billing_router, subscription_router, health_router.
 
-### D. Надежная интеграция с Xray
-1. Перевести Xray интеграцию в строго конфигурируемый backend (`settings.XRAY_*`).
-2. Добавить healthcheck Xray API и circuit breaker.
-3. Гарантировать согласованность «БД подписка активна» == «клиент реально есть в Xray».
-4. Ввести reconciliation job (ночная сверка и авто-исправление рассинхрона).
-5. SLA-индикаторы по операциям add/remove user.
+Вынести lifecycle в app/runtime/lifespan.py.
 
-### E. Наблюдаемость и SRE
-1. Structured logging (JSON) + correlation_id (`user_id`, `payment_id`, `event_id`).
-2. Метрики Prometheus: конверсия, успешность оплат, ошибки webhook, latency API.
-3. Алерты (Telegram/PagerDuty): падение webhook, рост 5xx, рост payment mismatch.
-4. Трассировка (OpenTelemetry) для критичного флоу оплаты.
-5. Runbook инцидентов и автоматические health probes.
+Вынести webhook orchestration в отдельный service/facade слой (тонкий endpoint, толстый application service).
 
-### F. Тестирование и контроль качества
-1. Unit-тесты сервисов (billing, yookassa validation, subscription auth).
-2. Integration тесты webhook + БД + транзакции.
-3. E2E smoke: `/start -> payment -> activation -> subscription fetch`.
-4. Нагрузочные тесты webhook и sub endpoint.
-5. Gate в CI/CD: lint + types + tests + migration check.
+Шаг 4 (Idempotency hardening)
+Определить единый “источник истины” активации: webhook-first, process_pending только как compensating job.
 
-### G. Продуктовая автономность (без постоянного участия основателя)
-1. Админ-панель: пользователи, подписки, платежи, блокировки, ручные корректировки.
-2. CRM/Support workflow: тикеты, история платежей, история действий.
-3. Контент-центр инструкций (версионирование, A/B, локализация RU/EN).
-4. Самообслуживание: смена устройства, восстановление доступа, FAQ bot.
-5. Автоматический сбор обратной связи (NPS/CSAT) после подключения.
+Ввести явную idempotency policy:
 
-### H. Коммерциализация и масштабирование
-1. Тарифная сетка (1/3/12 мес, trial, family/team plan).
-2. Partner/referral система с трекингом CPA/CPS.
-3. Юнит-экономика в BI: CAC, LTV, churn, payback.
-4. Локализация платежей (карты/СБП/крипто по рынкам).
-5. Multi-region архитектура и edge-домены для стабильного подключения.
+event_id хранить и проверять до side effects,
 
----
+lock scope и retry policy документировать.
 
-## 3) План доведения до «дорогого» коммерческого уровня
+Сократить критическую секцию транзакции; внешние вызовы (Xray) обернуть в outbox/compensation strategy.
 
-## Фаза 0 (1–2 недели): Блокирующие риски
-- Закрыть webhook security, защитить subscription URL, ввести строгую сверку платежа.
-- Сделать идемпотентность обработки webhook.
-- Включить минимальные метрики и тревоги.
+Шаг 5 (DB transaction policy)
+Стандартизовать unit-of-work: один request/handler = одна транзакционная политика.
 
-**Критерий выхода:** нельзя активировать подписку поддельным запросом; двойная обработка исключена.
+Ввести единый шаблон commit/rollback в application service слое.
 
-## Фаза 1 (2–4 недели): Production Ready Core
-- Завершить state machine платежей + retry policy.
-- Реализовать reconciliation Xray↔DB.
-- Добавить integration/e2e тесты и CI quality gate.
+Добавить аудит-лог изменений платежей и подписок.
 
-**Критерий выхода:** система выдерживает регрессии и восстановление после частичных сбоев.
+Шаг 6 (Model hygiene)
+Вынести PendingAction в отдельный файл модели, убрать дубли импортов.
 
-## Фаза 2 (4–8 недель): Автономные операции
-- Админка/операторские инструменты, аудит-лог, self-service пользователя.
-- Улучшенный onboarding и deeplink UX по клиентам/платформам.
-- Контент и поддержка без разработчика в цикле.
+Привести timezone policy к единой форме (aware UTC everywhere, без replace(tzinfo=None)).
 
-**Критерий выхода:** 90% пользовательских проблем решаются без ручного разработчика.
+Шаг 7 (Observability & SRE)
+Structured logging с correlation IDs (request_id, payment_id, telegram_id).
 
-## Фаза 3 (8–12 недель): Коммерческий premium-уровень
-- BI дашборды и сквозная аналитика воронки.
-- Тарифы, trial, реферальная программа, churn-механики.
-- SLO/SLA, multi-region отказоустойчивость, план BCP/DR.
+Метрики: webhook reject reasons, payment activation latency, duplicate events, worker lag.
 
-**Критерий выхода:** управляемый рост, прогнозируемая маржинальность, enterprise-grade надежность.
-
----
-
-## 4) Приоритизированный backlog (Top-20)
-1. Валидация `Authorization` для YooKassa webhook.
-2. Сверка суммы/валюты/metadata/capture с локальной записью.
-3. Идемпотентность событий (event store + unique).
-4. Транзакционная обработка activate flow.
-5. Подписанные subscription URL с TTL.
-6. Rate limiting webhook/sub endpoints.
-7. Structured logging + correlation IDs.
-8. Prometheus метрики + alert rules.
-9. Retry policy + terminal fail statuses.
-10. Reconciliation Xray ↔ DB.
-11. Авто-deprovision expired users.
-12. Интеграционные тесты платежного флоу.
-13. E2E smoke pipeline в CI.
-14. Админ-панель (MVP).
-15. Система ролей и audit permissions.
-16. Улучшенный onboarding/deeplink UX.
-17. Контент-инструкции с версионированием.
-18. Тарифы и промо-механики.
-19. BI-слой и cohort-аналитика.
-20. Multi-region roadmap и DR drills.
-
----
-
-## 5) KPI «коммерческого уровня»
-
-### Технические
-- Uptime API/Webhook: >= 99.9%
-- Успех обработки webhook: >= 99.95%
-- MTTR по критичным инцидентам: < 30 минут
-- Доля автоматических восстановлений: > 80%
-
-### Продуктовые
-- Конверсия trial->pay: целевой диапазон 20–35%
-- 30-day retention: > 55%
-- Churn: < 8%/мес (для подписочной модели B2C)
-- First successful connect после оплаты: > 98%
-
-### Финансовые
-- LTV/CAC > 3
-- Payback period < 3 месяца
-- Доля успешных рекуррентных продлений > 70%
-
----
-
-## 6) Рекомендованный целевой стек для «дорогого» уровня
-- Infra: Docker + managed Postgres + Redis + Nginx + CDN/WAF.
-- Async jobs: Celery/RQ/Arq (или APScheduler + очередь, если строго ограничен бюджет).
-- Monitoring: Prometheus + Grafana + Sentry + Loki.
-- CI/CD: GitHub Actions + миграции + staged deploy + rollback.
-- Security: secret manager, key rotation, dependency scanning, SAST.
-- Analytics: ClickHouse/BigQuery + Metabase/Superset.
-
----
-
-## 7) Итог
-
-Чтобы бот стал **полностью автономным коммерческим продуктом**, нужно не только «дописать функции», а закрыть 4 контура: **security, reliability, operations, growth economics**. После реализации фаз 0–3 проект может быть выведен на уровень «дорогого» продукта с предсказуемым качеством сервиса, управляемой экономикой и масштабируемой операционной моделью.
+Alerting на “payment succeeded but activation failed”.
