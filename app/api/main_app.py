@@ -19,6 +19,7 @@ from sqlalchemy.orm import joinedload
 
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from app.bot.core import bot
 from app.core.settings import settings
 from app.core.security import InMemoryRateLimiter, ip_in_allowlist
 from app.db.database import async_session_maker
@@ -284,3 +285,9 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         print(f"Failed to send message: {e}")
         
     return {"status": "ok"}
+
+# --- ИНСТРУКЦИЯ ДЛЯ КЛИЕНТОВ ---
+@app.get("/setup")
+async def root_instruction(request: Request):
+    return templates.TemplateResponse(request=request, name="setup.html")
+
