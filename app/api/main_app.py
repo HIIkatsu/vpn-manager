@@ -6,6 +6,7 @@ from uuid import uuid4
 import secrets
 import ipaddress
 import json
+import logging
 
 from fastapi import FastAPI, Depends, Request, Response, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -35,6 +36,7 @@ from app.bot.core import bot
 app = FastAPI(title="AnKo VPN API")
 templates = Jinja2Templates(directory="app/templates")
 security = HTTPBasic()
+logger = logging.getLogger(__name__)
 
 # Возвращаем "мозги" боту
 
@@ -257,15 +259,20 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
     
     if payment is None:
+        logger.warning("Webhook payment not found", extra={"payment_id": payment_obj.id, "source": "webhook"})
         return {"status": "not_found"}
     if payment.processed_event_id == event_id:
+        logger.info("Duplicate payment event received", extra={"event_id": event_id, "payment_id": payment_obj.id, "source": "webhook"})
         return {"status": "duplicate"}
     if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
+        logger.warning("Payment amount validation failed", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"})
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
     if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
+        logger.warning("Payment metadata validation failed", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"})
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
         
     if not await billing.activate_payment(payment_obj.id, event_id):
+        logger.warning("Payment activation returned retry", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"})
         return {"status": "retry"}
         
     try:
@@ -290,4 +297,3 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
 @app.get("/setup")
 async def root_instruction(request: Request):
     return templates.TemplateResponse(request=request, name="setup.html")
-

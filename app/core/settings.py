@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     SUBSCRIPTION_RATE_LIMIT_PER_MINUTE: int = 5
     YOOKASSA_RATE_LIMIT_PER_MINUTE: int = 30
+    BILLING_PENDING_BATCH_SIZE: int = 50
 
     XRAY_GRPC_HOST: str
     XRAY_GRPC_PORT: int
