@@ -1,9 +1,10 @@
 import logging
 import grpc
 import json
+import re
+import asyncio
 from uuid import UUID
 from app.core.settings import settings
-# Исправленные импорты: разбили склеенную строку
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
 from app.grpc.xray_api.common.protocol import user_pb2
 from app.grpc.xray_api.common.serial import typed_message_pb2
@@ -64,13 +65,11 @@ class XrayManager:
                 value=operation.SerializeToString()
             )
             request = command_pb2.AlterInboundRequest(tag=self.inbound_tag, operation=op_typed)
-            
             async with grpc.aio.insecure_channel(self.target) as channel:
                 stub = command_pb2_grpc.HandlerServiceStub(channel)
                 await stub.AlterInbound(request)
             return True
         except grpc.RpcError as e:
-            # ТИХАЯ ОБРАБОТКА: если юзер уже есть — это успех
             if "already exists" in str(e.details()):
                 return True
             logger.error(f"gRPC AddClient Error for {email}: {e}")
@@ -78,3 +77,55 @@ class XrayManager:
         except Exception as e:
             logger.error(f"Unexpected error for {email}: {e}")
             return False
+
+    async def remove_client(self, email: str) -> bool:
+        try:
+            operation = command_pb2.RemoveUserOperation(email=email)
+            op_typed = typed_message_pb2.TypedMessage(
+                type="xray.app.proxyman.command.RemoveUserOperation",
+                value=operation.SerializeToString()
+            )
+            request = command_pb2.AlterInboundRequest(tag=self.inbound_tag, operation=op_typed)
+            async with grpc.aio.insecure_channel(self.target) as channel:
+                stub = command_pb2_grpc.HandlerServiceStub(channel)
+                await stub.AlterInbound(request)
+            return True
+        except grpc.RpcError as e:
+            if "not found" in str(e.details()).lower():
+                return True
+            logger.error(f"gRPC RemoveClient Error for {email}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected remove error for {email}: {e}")
+            return False
+
+    async def get_live_traffic_stats(self) -> dict[str, int]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            
+            if proc.returncode != 0:
+                logger.error(f"Xray API error: {stderr.decode()}")
+                return {}
+
+            data = json.loads(stdout.decode())
+            stats_list = data.get("stat", []) or data.get("stats", [])
+            
+            traffic_map = {}
+            for item in stats_list:
+                name = item.get("name", "")
+                value = int(item.get("value", 0))
+                
+                match = re.match(r"user>>>(?P<uuid>.+?)>>>traffic>>>(uplink|downlink)$", name)
+                if match:
+                    user_uuid = match.group("uuid")
+                    traffic_map[user_uuid] = traffic_map.get(user_uuid, 0) + value
+                    
+            return traffic_map
+        except Exception as e:
+            logger.error(f"Failed to fetch Xray stats: {e}")
+            return {}

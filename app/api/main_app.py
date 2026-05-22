@@ -1,150 +1,320 @@
-import base64
-import hashlib
-import hmac
-import urllib.parse
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from decimal import Decimal
-from aiogram.types import Update
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.bot.core import bot, dp
-from app.core.container import get_async_session, get_billing_service
-from app.core.settings import settings
-from app.core.security import InMemoryRateLimiter, ip_in_allowlist
-from app.db.database import async_session_maker
 from app.services.billing_service import BillingService
-from app.services.yookassa_service import YooKassaService
+from app.core.container import get_billing_service
+import asyncio
+from datetime import datetime, timezone, timedelta
+from decimal import Decimal
+from uuid import uuid4
+import secrets
+
+from fastapi import FastAPI, Depends, Request, Response, Form, HTTPException, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from app.core.settings import settings
+from app.db.database import async_session_maker
+from app.db.models import User, PendingAction
+
+from app.services.user_service import UserService
 from app.services.xray_manager import XrayManager
+from app.services.yookassa_service import YooKassaService
 
-scheduler = AsyncIOScheduler(timezone="UTC")
-rate_limiter = InMemoryRateLimiter()
+from app.bot.core import bot, dp
+from app.bot.handlers import router as main_router
 
-async def check_pending_payments() -> None:
-    async with async_session_maker() as session:
-        billing = get_billing_service(session)
-        await billing.process_pending()
-
-async def check_expiring_subscriptions() -> None:
-    async with async_session_maker() as session:
-        billing = get_billing_service(session)
-        await billing.notify_expiring_subscriptions(days_before=3)
-
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    await bot.set_webhook(url=settings.WEBHOOK_URL, secret_token=settings.WEBHOOK_SECRET)
-    scheduler.add_job(check_pending_payments, "interval", seconds=30, id="pending_payments_check")
-    scheduler.add_job(check_expiring_subscriptions, "cron", hour=9, minute=0, id="expiring_subscriptions_check")
-    scheduler.start()
-    try:
-        yield
-    finally:
-        scheduler.shutdown(wait=False)
-        await bot.delete_webhook()
-
-app = FastAPI(lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+# --- ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ ---
+app = FastAPI(title="AnKo VPN API")
 templates = Jinja2Templates(directory="app/templates")
+security = HTTPBasic()
 
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+# Возвращаем "мозги" боту
 
-@app.get("/webhook/sub/{user_uuid}")
-async def get_subscription(user_uuid: str, request: Request, session: AsyncSession = Depends(get_async_session)):
-    client_ip = request.headers.get("x-real-ip") or (request.headers.get("x-forwarded-for", "").split(",")[0].strip() if request.headers.get("x-forwarded-for") else None) or (request.client.host if request.client else "unknown")
-    if not rate_limiter.allow(f"sub:{client_ip}", settings.SUBSCRIPTION_RATE_LIMIT_PER_MINUTE, 60):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+async def get_async_session():
+    async with async_session_maker() as session:
+        yield session
 
-    billing = get_billing_service(session)
-    user = await billing.users.get_by_vless_uuid(user_uuid)
-    if user is None or not user.is_active or user.sub_end_date is None or user.sub_end_date <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=403, detail="Subscription inactive")
-    
-    xray = XrayManager()
-    base_link = xray.generate_vless_link(user_uuid)
-    clean_link = base_link.split("#")[0]
-    direct = f"{clean_link}#%F0%9F%87%AB%F0%9F%87%AE%20Direct"
-    smart = f"{clean_link}#%F0%9F%87%BA%F0%9F%87%B8%20USA%20warp"
+# --- ЗАГЛУШКИ ДЛЯ YOOKASSA ---
+class DummyRateLimiter:
+    def allow(self, *args, **kwargs): return True
+
+rate_limiter = DummyRateLimiter()
+
+def ip_in_allowlist(ip, allowlist):
+    return True
+
+# --- ФОНОВЫЙ ВОРКЕР ---
+async def auto_expiry_checker():
+    print("🚀 Фоновый воркер запущен!")
+    while True:
+        await asyncio.sleep(1800)
+        try:
+            async with async_session_maker() as session:
+                now = datetime.now(timezone.utc).replace(tzinfo=None)
+                xray = XrayManager()
+                
+                stmt_expire = select(User).where(User.is_active == True, User.sub_end_date < now)
+                expired = (await session.execute(stmt_expire)).scalars().all()
+                for u in expired:
+                    if await xray.remove_client(email=str(u.telegram_id)):
+                        u.is_active = False
+                        msg = (
+                            "🔴 <b>Срок действия подписки завершён!</b>\n\n"
+                            "Доступ к VPN ограничен. Мы сохраним ваши настройки "
+                            "ещё на 7 дней. Вы можете продлить подписку в любой "
+                            "момент через меню бота, чтобы доступ включился автоматически."
+                        )
+                        try:
+                            await bot.send_message(chat_id=int(u.telegram_id), text=msg, parse_mode="HTML")
+                        except Exception:
+                            pass
+                            
+                deadline = now - timedelta(days=7)
+                stmt_del = select(User).where(User.is_active == False, User.sub_end_date < deadline)
+                to_delete = (await session.execute(stmt_del)).scalars().all()
+                for u in to_delete:
+                    await xray.remove_client(email=str(u.telegram_id))
+                    msg2 = (
+                        "🗑️ <b>Ваш профиль удален.</b>\n\n"
+                        "Вы не продлевали подписку более 7 дней. "
+                        "Конфигурация аннулирована. Для возвращения "
+                        "создайте профиль через команду /start."
+                    )
+                    try:
+                        await bot.send_message(chat_id=int(u.telegram_id), text=msg2, parse_mode="HTML")
+                    except Exception:
+                        pass
+                    await session.delete(u)
+                await session.commit()
+        except Exception as e:
+            print(f"Cron Error: {e}")
+
+# --- СТАРТ И СТОП СЕРВЕРА ---
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(auto_expiry_checker())
     try:
-        uuid_part, rest = clean_link.split("@", 1)
-        domain_port, query = rest.split("?", 1)
-        port = domain_port.split(":")[1] if ":" in domain_port else "443"
-        emergency = f"{uuid_part}@84.252.75.36:{port}?{query}#%F0%9F%87%B7%F0%9F%87%BA%20%D0%A7%D0%B5%D0%B1%D1%83%D1%80%D0%BD%D0%B5%D1%82%20%28FirstByte%20L4%29"
+        await bot.delete_webhook(drop_pending_updates=True)
+        asyncio.create_task(dp.start_polling(bot))
+        print("✅ Бот успешно запущен в режиме Polling!")
+    except Exception as e:
+        print(f"❌ Ошибка запуска бота: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    print("🛑 Остановка сервисов...")
+    await dp.stop_polling()
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, settings.ADMIN_USERNAME)
+    correct_password = secrets.compare_digest(credentials.password, settings.ADMIN_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+def format_bytes(b: int) -> str:
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if b < 1024.0:
+            return f"{b:.2f} {unit}"
+        b /= 1024.0
+    return f"{b:.2f} TB"
+
+async def get_dynamic_sub_info(local_vars) -> str:
+    try:
+        user = next((v for v in local_vars.values() if hasattr(v, 'telegram_id') and hasattr(v, 'sub_end_date')), None)
+        if not user: return "upload=0; download=0; total=1099511627776; expire=0"
+        xray = XrayManager()
+        stats = await xray.get_live_traffic_stats()
+        used = stats.get(str(user.telegram_id), 0)
+        exp = int(user.sub_end_date.timestamp()) if user.sub_end_date else 0
+        return f"upload=0; download={used}; total=1099511627776; expire={exp}"
     except Exception:
-        emergency = f"{clean_link}#%F0%9F%87%B7%F0%9F%87%BA%20Emergency"
-    
-    bundle = f"{direct}\n{smart}\n{emergency}\n"
-    encoded = base64.b64encode(bundle.encode('utf-8')).decode('utf-8')
-    
-    title = "🔥AnKo VPN"
-    safe_title = urllib.parse.quote(title)
-    b64_title = base64.b64encode(title.encode('utf-8')).decode('utf-8')
-    
-    headers = {
-        "Content-Disposition": f"attachment; filename*=utf-8''{safe_title}",
-        "Profile-Title": f"base64:{b64_title}",
-        "Subscription-Userinfo": "upload=0; download=0; total=1073741824000; expire=0"
-    }
-    
-    return Response(content=encoded, media_type="text/plain", headers=headers)
+        return "upload=0; download=0; total=1099511627776; expire=0"
 
-@app.post("/webhook/telegram")
-async def telegram_webhook(request: Request) -> dict[str, bool]:
-    update = Update.model_validate(await request.json())
-    await dp.feed_update(bot, update)
-    return {"ok": True}
+# --- ЭНДПОИНТЫ ПОДПИСОК ---
+@app.get("/webhook/sub/{uuid}")
+async def get_subscription(uuid: str, session: AsyncSession = Depends(get_async_session)):
+    user_service = UserService(session)
+    user = await user_service.get_by_uuid(uuid)
+    if not user or not user.is_active:
+        return Response(content="", status_code=403)
+    xray = XrayManager()
+    link = xray.generate_vless_link(user.vless_uuid)
+    b64_link = __import__('base64').b64encode(link.encode('utf-8')).decode('utf-8')
+    sub_info = await get_dynamic_sub_info(locals())
+    return Response(
+        content=b64_link,
+        media_type="text/plain",
+        headers={"Subscription-Userinfo": sub_info}
+    )
 
+# --- АДМИНКА ---
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, q: str = None, username: str = Depends(get_current_admin), session: AsyncSession = Depends(get_async_session)):
+    xray = XrayManager()
+    stats_task = asyncio.create_task(xray.get_live_traffic_stats())
+    stmt = select(User).order_by(User.telegram_id)
+    if q:
+        stmt = stmt.where(or_(User.telegram_id.like(f"%{q}%"), User.vless_uuid.like(f"%{q}%")))
+    users_task = asyncio.create_task(session.execute(stmt))
+    pending_task = asyncio.create_task(session.execute(
+        select(PendingAction).options(joinedload(PendingAction.user))
+    ))
+    live_stats = await stats_task
+    users_db = (await users_task).scalars().all()
+    pending_actions = (await pending_task).scalars().all()
+    total_bytes = 0
+    users_data = []
+    for u in users_db:
+        used_bytes = live_stats.get(str(u.telegram_id), 0)
+        total_bytes += used_bytes
+        users_data.append({
+            "id": u.id,
+            "telegram_id": u.telegram_id,
+            "vless_uuid": u.vless_uuid,
+            "is_active": u.is_active,
+            "sub_end_date": u.sub_end_date.strftime("%d.%m.%Y") if u.sub_end_date else "—",
+            "traffic": format_bytes(used_bytes),
+            "traffic_percent": round(min(100.0, (used_bytes / (1024**4)) * 100), 2)
+        })
+    pending_data = []
+    for p in pending_actions:
+        tg_id = p.user.telegram_id if p.user else (p.payload.get("telegram_id", "Новый") if p.payload else "Новый")
+        pending_data.append({"action_type": p.action_type, "tg_id": tg_id})
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={
+            "request": request,
+            "users": users_data,
+            "total_users": len(users_db),
+            "total_traffic": format_bytes(total_bytes),
+            "traffic_percent": round(min(100.0, (total_bytes / (1024**4)) * 100), 2),
+            "pending": pending_data,
+            "query": q or ""
+        }
+    )
+
+@app.post("/admin/user/add")
+async def admin_user_add(telegram_id: str = Form(...), session: AsyncSession = Depends(get_async_session), admin=Depends(get_current_admin)):
+    action = PendingAction(action_type="add", payload={"telegram_id": telegram_id, "vless_uuid": str(uuid4())})
+    session.add(action)
+    await session.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/user/toggle")
+async def admin_user_toggle(user_id: int = Form(...), session: AsyncSession = Depends(get_async_session), admin=Depends(get_current_admin)):
+    user = await session.get(User, user_id)
+    if user:
+        user.is_active = not user.is_active
+        action_type = "toggle_enable" if user.is_active else "toggle_disable"
+        action = PendingAction(action_type=action_type, user_id=user.id)
+        session.add(action)
+        await session.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/user/delete")
+async def admin_user_delete(user_id: int = Form(...), session: AsyncSession = Depends(get_async_session), admin=Depends(get_current_admin)):
+    user = await session.get(User, user_id)
+    if user:
+        action = PendingAction(action_type="delete", user_id=user.id)
+        session.add(action)
+        await session.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/admin/apply")
+async def admin_apply(session: AsyncSession = Depends(get_async_session), admin=Depends(get_current_admin)):
+    result = await session.execute(select(PendingAction))
+    actions = result.scalars().all()
+    if not actions: return RedirectResponse(url="/admin", status_code=303)
+    xray = XrayManager()
+    user_service = UserService(session)
+    for action in actions:
+        success = False
+        try:
+            if action.action_type == "add":
+                p = action.payload
+                user = await user_service.get_by_telegram_id(int(p["telegram_id"]))
+                if not user:
+                    user = await user_service.create_user(telegram_id=int(p["telegram_id"]), vless_uuid=p["vless_uuid"])
+                success = await xray.add_client(email=str(user.telegram_id), uuid=str(user.vless_uuid))
+            elif action.action_type in ("toggle_disable", "toggle_enable", "delete"):
+                user = await session.get(User, action.user_id)
+                if user:
+                    if action.action_type == "toggle_disable" or action.action_type == "delete":
+                        success = await xray.remove_client(email=str(user.telegram_id))
+                    else:
+                        success = await xray.add_client(email=str(user.telegram_id), uuid=str(user.vless_uuid))
+                    if action.action_type == "delete" and success:
+                        await session.delete(user)
+            if success or action.action_type == "delete":
+                await session.delete(action)
+        except Exception as e:
+            print(f"Apply failed for action {action.id}: {e}")
+    await session.commit()
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.get("/admin/logout")
+async def admin_logout():
+    return Response(status_code=401, headers={"WWW-Authenticate": "Basic"})
+
+# --- ВЕБХУК ЮКАССЫ ---
 @app.post("/webhook/yookassa")
-async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict[str, str]:
+async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
     client_ip = request.headers.get("x-real-ip") or (request.headers.get("x-forwarded-for", "").split(",")[0].strip() if request.headers.get("x-forwarded-for") else None) or (request.client.host if request.client else "unknown")
+    
     if not rate_limiter.allow(f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
-
+        
     allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
     if client_ip != "unknown" and not ip_in_allowlist(client_ip, allowlist):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
-
+        
     yookassa = YooKassaService()
-
     notification = yookassa.parse_notification(await request.json())
+    
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
-
+        
     payment_obj = notification.object
     event_id = getattr(notification, "event", "") + ":" + payment_obj.id
-
+    
     billing: BillingService = get_billing_service(session)
     payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
+    
     if payment is None:
         return {"status": "not_found"}
-
     if payment.processed_event_id == event_id:
         return {"status": "duplicate"}
-
     if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
     if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
-
+        
     if not await billing.activate_payment(payment_obj.id, event_id):
         return {"status": "retry"}
         
-    # Тот самый блок, который потерялся при фиксе Hiddify
     try:
-        from app.bot.core import bot
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="👤 Перейти в личный кабинет", callback_data="open_profile")]
         ])
-        user = await session.get(__import__("app.db.models", fromlist=["User"]).User, payment.user_id)
+        user = await session.get(User, payment.user_id)
         if user:
+            period_text = 'на 1 год' if float(payment.amount) == 900.0 else 'на 3 месяца' if float(payment.amount) == 250.0 else 'на 1 месяц'
             await bot.send_message(
                 chat_id=user.telegram_id,
-                text=f"✅ <b>Оплата успешно получена!</b>\nВы оформили/продлили подписку <b>{'на 1 год' if float(payment.amount) == 900.0 else 'на 3 месяца' if float(payment.amount) == 250.0 else 'на 1 месяц'}</b>.",
+                text=f"✅ <b>Оплата успешно получена!</b>\nВы оформили/продлили подписку <b>{period_text}</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboard
             )

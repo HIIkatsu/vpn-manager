@@ -17,3 +17,23 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     payments: Mapped[list["Payment"]] = relationship(back_populates="user")
+
+
+from sqlalchemy import JSON, ForeignKey, Column, Integer, String, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+
+
+from sqlalchemy import JSON, ForeignKey, Column, Integer, String, DateTime
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+
+class PendingAction(Base):
+    __tablename__ = "pending_actions"
+    id = Column(Integer, primary_key=True)
+    action_type = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User", foreign_keys=[user_id])

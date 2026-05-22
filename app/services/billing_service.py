@@ -56,11 +56,18 @@ class BillingService:
             payment.processed_event_id = event_id
         user.is_active = True
 
+        days = 30
+        amt = float(payment.amount)
+        if amt == 250.0:
+            days = 90
+        elif amt == 900.0:
+            days = 365
+
         now = datetime.now(timezone.utc)
         if user.sub_end_date is None or user.sub_end_date < now:
-            user.sub_end_date = now + timedelta(days=30)
+            user.sub_end_date = now + timedelta(days=days)
         else:
-            user.sub_end_date += timedelta(days=30)
+            user.sub_end_date += timedelta(days=days)
 
         await self.session.commit()
         return True
