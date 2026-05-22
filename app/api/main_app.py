@@ -5,6 +5,8 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from uuid import uuid4
 import secrets
+import ipaddress
+import json
 
 from fastapi import FastAPI, Depends, Request, Response, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -19,6 +21,7 @@ from sqlalchemy.orm import joinedload
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from app.core.settings import settings
+from app.core.security import InMemoryRateLimiter, ip_in_allowlist
 from app.db.database import async_session_maker
 from app.db.models import User, PendingAction
 
@@ -40,14 +43,7 @@ async def get_async_session():
     async with async_session_maker() as session:
         yield session
 
-# --- ЗАГЛУШКИ ДЛЯ YOOKASSA ---
-class DummyRateLimiter:
-    def allow(self, *args, **kwargs): return True
-
-rate_limiter = DummyRateLimiter()
-
-def ip_in_allowlist(ip, allowlist):
-    return True
+rate_limiter = InMemoryRateLimiter()
 
 # --- ФОНОВЫЙ ВОРКЕР ---
 async def auto_expiry_checker():
@@ -98,6 +94,10 @@ async def auto_expiry_checker():
 # --- СТАРТ И СТОП СЕРВЕРА ---
 @app.on_event("startup")
 async def startup_event():
+    if settings.ADMIN_USERNAME == "admin" or settings.ADMIN_PASSWORD == "admin":
+        raise RuntimeError("Unsafe default admin credentials are forbidden")
+    if not settings.ADMIN_USERNAME or not settings.ADMIN_PASSWORD:
+        raise RuntimeError("Admin credentials must not be empty")
     asyncio.create_task(auto_expiry_checker())
     try:
         await bot.delete_webhook(drop_pending_updates=True)
@@ -272,17 +272,39 @@ async def admin_logout():
 # --- ВЕБХУК ЮКАССЫ ---
 @app.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
-    client_ip = request.headers.get("x-real-ip") or (request.headers.get("x-forwarded-for", "").split(",")[0].strip() if request.headers.get("x-forwarded-for") else None) or (request.client.host if request.client else "unknown")
-    
+    yookassa = YooKassaService()
+    authorization = request.headers.get("authorization")
+    signature = request.headers.get("x-yookassa-signature")
+    raw_body = await request.body()
+    if not yookassa.is_valid_webhook_auth(authorization, signature, raw_body):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
+
+    trusted_proxies = {
+        ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()
+    }
+    remote_addr = request.client.host if request.client else ""
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    x_real_ip = request.headers.get("x-real-ip")
+    client_ip = remote_addr
+    if remote_addr in trusted_proxies:
+        if x_real_ip:
+            client_ip = x_real_ip.strip()
+        elif forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+
+    try:
+        ipaddress.ip_address(client_ip)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid client IP")
+
     if not rate_limiter.allow(f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
-        
+
     allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
-    if client_ip != "unknown" and not ip_in_allowlist(client_ip, allowlist):
+    if not ip_in_allowlist(client_ip, allowlist):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
-        
-    yookassa = YooKassaService()
-    notification = yookassa.parse_notification(await request.json())
+
+    notification = yookassa.parse_notification(json.loads(raw_body.decode("utf-8")))
     
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}

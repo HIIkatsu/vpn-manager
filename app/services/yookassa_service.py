@@ -1,12 +1,17 @@
 import asyncio
 import base64
+import hmac
 import uuid
 from decimal import Decimal
+from hashlib import sha256
+
 from yookassa import Configuration, Payment as YooPayment
 from yookassa.domain.notification import WebhookNotificationFactory
+
 from app.core.settings import settings
 from app.db.models import Payment
 from app.db.repositories.payment_repo import PaymentRepository
+
 
 class YooKassaService:
     def __init__(self) -> None:
@@ -17,8 +22,34 @@ class YooKassaService:
         token = f"{settings.YOOKASSA_SHOP_ID}:{settings.YOOKASSA_SECRET_KEY}".encode("utf-8")
         return f"Basic {base64.b64encode(token).decode('ascii')}"
 
-    def is_valid_webhook_auth(self, authorization_header: str | None) -> bool:
-        return bool(authorization_header and authorization_header.strip() == self.expected_basic_auth())
+    def _is_valid_basic_auth(self, authorization_header: str | None) -> bool:
+        return bool(
+            authorization_header
+            and hmac.compare_digest(authorization_header.strip(), self.expected_basic_auth())
+        )
+
+    def _expected_hmac_signature(self, body_bytes: bytes) -> str:
+        secret = settings.YOOKASSA_SECRET_KEY.encode("utf-8")
+        return hmac.new(secret, body_bytes, sha256).hexdigest()
+
+    def _is_valid_hmac_auth(self, signature_header: str | None, body_bytes: bytes) -> bool:
+        if not signature_header:
+            return False
+        candidate = signature_header.strip()
+        expected = self._expected_hmac_signature(body_bytes)
+        return hmac.compare_digest(candidate, expected)
+
+    def is_valid_webhook_auth(
+        self,
+        authorization_header: str | None,
+        signature_header: str | None = None,
+        body_bytes: bytes | None = None,
+    ) -> bool:
+        if self._is_valid_basic_auth(authorization_header):
+            return True
+        if body_bytes is None:
+            return False
+        return self._is_valid_hmac_auth(signature_header, body_bytes)
 
     def parse_notification(self, payload: dict):
         try:
