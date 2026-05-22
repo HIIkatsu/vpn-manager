@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     YOOKASSA_WEBHOOK_AUTH: str | None = None
     YOOKASSA_WEBHOOK_IP_ALLOWLIST: str = ""
+    TRUSTED_PROXY_IPS: str = ""
 
     SUBSCRIPTION_RATE_LIMIT_PER_MINUTE: int = 5
     YOOKASSA_RATE_LIMIT_PER_MINUTE: int = 30
