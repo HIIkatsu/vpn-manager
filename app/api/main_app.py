@@ -144,7 +144,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         if user:
             await bot.send_message(
                 chat_id=user.telegram_id,
-                text="✅ <b>Оплата успешно получена!</b>\nВаша подписка активирована.",
+                text=f"✅ <b>Оплата успешно получена!</b>\nВы оформили/продлили подписку <b>{'на 1 год' if float(payment.amount) == 900.0 else 'на 3 месяца' if float(payment.amount) == 250.0 else 'на 1 месяц'}</b>.",
                 parse_mode="HTML",
                 reply_markup=keyboard
             )
