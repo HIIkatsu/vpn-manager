@@ -86,7 +86,7 @@ async def get_dynamic_sub_info(local_vars) -> str:
 @app.get("/webhook/sub/{uuid}")
 async def get_subscription(uuid: str, session: AsyncSession = Depends(get_async_session)):
     user_service = UserService(session)
-    user = await user_service.get_by_uuid(uuid)
+    user = await user_service.get_by_uuid(uuid, session=session)
     if not user or not user.is_active:
         return Response(content="", status_code=403)
     xray = XrayManager()
