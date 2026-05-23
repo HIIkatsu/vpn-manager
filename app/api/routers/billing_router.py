@@ -1,6 +1,7 @@
 import ipaddress
 import json
 import logging
+import asyncio
 from decimal import Decimal
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -47,7 +48,13 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     except ValueError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid client IP")
 
-    if not rate_limiter.allow(f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60):
+    allowed = await asyncio.to_thread(
+        rate_limiter.allow,
+        f"yk:{client_ip}",
+        settings.YOOKASSA_RATE_LIMIT_PER_MINUTE,
+        60,
+    )
+    if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
     allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
