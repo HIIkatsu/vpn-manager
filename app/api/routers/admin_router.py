@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from sqlalchemy.orm import joinedload
 
 from app.api.dependencies.common import get_async_session, get_current_admin
 from app.api.utils.subscription import format_bytes
+from app.core.logging_utils import log_context
 from app.db.models import PendingAction, User
 from app.services.traffic_stats_service import TrafficStatsService
 from app.services.user_service import UserService
@@ -19,6 +21,7 @@ from app.services.xray_manager import XrayManager
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -199,8 +202,11 @@ async def admin_apply(session: AsyncSession = Depends(get_async_session), admin=
                         await session.delete(user)
             if success or action.action_type == "delete":
                 await session.delete(action)
-        except Exception as e:
-            print(f"Apply failed for action {action.id}: {e}")
+        except Exception:
+            logger.exception(
+                "Failed to apply pending action",
+                extra=log_context(action_source="admin_apply", event_id=str(action.id), telegram_id=action.user_id),
+            )
     return RedirectResponse(url="/admin", status_code=303)
 
 

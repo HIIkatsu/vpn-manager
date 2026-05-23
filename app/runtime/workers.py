@@ -10,6 +10,7 @@ from app.db.database import async_session_maker
 from app.db.models import OutboxEvent, User
 from app.db.repositories.outbox_repo import OutboxRepository
 from app.services.xray_manager import XrayManager
+from app.core.logging_utils import log_context
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,10 @@ async def run_auto_expiry_iteration() -> None:
                 try:
                     await bot.send_message(chat_id=int(user.telegram_id), text=msg, parse_mode="HTML")
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Failed to send expiry notification",
+                        extra=log_context(telegram_id=user.telegram_id, action_source="auto_expiry_notify"),
+                    )
 
         deadline = now - timedelta(days=7)
         delete_stmt = select(User).where(User.is_active.is_(False), User.sub_end_date < deadline)
@@ -106,7 +110,10 @@ async def run_auto_expiry_iteration() -> None:
             try:
                 await bot.send_message(chat_id=int(user.telegram_id), text=msg, parse_mode="HTML")
             except Exception:
-                pass
+                logger.exception(
+                    "Failed to send profile deletion notification",
+                    extra=log_context(telegram_id=user.telegram_id, action_source="auto_expiry_delete_notify"),
+                )
             await session.delete(user)
 
 
