@@ -1,5 +1,7 @@
 import unittest
+from pathlib import Path
 from contextlib import asynccontextmanager
+
 
 from app.services.transaction import session_scope
 from app.services.yookassa_service import YooKassaService
@@ -53,6 +55,12 @@ class YooKassaAuthTests(unittest.TestCase):
         signature = service._expected_hmac_signature(payload)
 
         self.assertTrue(service.is_valid_webhook_auth(None, signature, None, payload))
+
+
+class WebhookRouterAuthTests(unittest.TestCase):
+    def test_webhook_does_not_read_token_from_query_params(self):
+        source = Path("app/api/routers/billing_router.py").read_text(encoding="utf-8")
+        self.assertNotIn('request.query_params.get("token")', source)
 
 
 if __name__ == "__main__":
