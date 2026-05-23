@@ -50,43 +50,49 @@ class BillingService:
         payment.processing_started_at = datetime.now(timezone.utc)
         await self.session.flush()
         
-        user = await self.users.get_by_id(payment.user_id)
-        if user is None:
+        try:
+            user = await self.users.get_by_id(payment.user_id)
+            if user is None:
+                payment.status = "pending"
+                payment.processing_started_at = None
+                await self.session.flush()
+                return False
+
+            payment.status = "success"
+            payment.processing_started_at = None
+            if event_id:
+                payment.processed_event_id = event_id
+            user.is_active = True
+
+            days = 30
+            amt = float(payment.amount)
+            if amt == 250.0:
+                days = 90
+            elif amt == 900.0:
+                days = 365
+
+            now = datetime.now(timezone.utc)
+            if user.sub_end_date is None or user.sub_end_date < now:
+                user.sub_end_date = now + timedelta(days=days)
+            else:
+                user.sub_end_date += timedelta(days=days)
+
+            await self.session.flush()
+            await self.outbox.enqueue(
+                event_type="xray.add_client",
+                aggregate_type="payment",
+                aggregate_id=payment.payment_id,
+                dedup_key=f"xray.add_client:{payment.payment_id}",
+                payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid}),
+            )
+
+            await self.session.flush()
+            return True
+        except Exception:
             payment.status = "pending"
             payment.processing_started_at = None
             await self.session.flush()
-            return False
-            
-        payment.status = "success"
-        payment.processing_started_at = None
-        if event_id:
-            payment.processed_event_id = event_id
-        user.is_active = True
-
-        days = 30
-        amt = float(payment.amount)
-        if amt == 250.0:
-            days = 90
-        elif amt == 900.0:
-            days = 365
-
-        now = datetime.now(timezone.utc)
-        if user.sub_end_date is None or user.sub_end_date < now:
-            user.sub_end_date = now + timedelta(days=days)
-        else:
-            user.sub_end_date += timedelta(days=days)
-
-        await self.session.flush()
-        await self.outbox.enqueue(
-            event_type="xray.add_client",
-            aggregate_type="payment",
-            aggregate_id=payment.payment_id,
-            dedup_key=f"xray.add_client:{payment.payment_id}",
-            payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid}),
-        )
-
-        await self.session.flush()
-        return True
+            raise
 
     async def reclaim_stale_processing(self) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.BILLING_PROCESSING_STALE_AFTER_SECONDS)

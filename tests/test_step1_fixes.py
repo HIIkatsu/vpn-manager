@@ -49,10 +49,10 @@ class SessionScopeTests(unittest.IsolatedAsyncioTestCase):
 class YooKassaAuthTests(unittest.TestCase):
     def test_webhook_hmac_auth_accepts_valid_signature(self):
         service = YooKassaService()
-        body = b'{"event":"payment.succeeded"}'
-        signature = service._expected_hmac_signature(body)
+        payload = {"event": "payment.succeeded"}
+        signature = service._expected_hmac_signature(payload)
 
-        self.assertTrue(service.is_valid_webhook_auth(None, signature, body))
+        self.assertTrue(service.is_valid_webhook_auth(None, signature, None, payload))
 
 
 if __name__ == "__main__":
