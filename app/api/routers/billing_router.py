@@ -2,7 +2,6 @@ import asyncio
 import ipaddress
 import json
 import logging
-import asyncio
 from decimal import Decimal
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -35,7 +34,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
 
     auth_header = request.headers.get("authorization")
     signature_header = request.headers.get("x-content-hmac-sha256")
-    shared_token = request.headers.get("x-yookassa-webhook-token") or request.query_params.get("token")
+    shared_token = request.headers.get("x-yookassa-webhook-token")
 
     if not yookassa.is_valid_webhook_auth(auth_header, signature_header, shared_token, payload):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
