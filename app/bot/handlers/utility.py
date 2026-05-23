@@ -6,6 +6,7 @@ from app.bot.handlers.profile import get_profile_data
 from app.bot.handlers.subscription import subscription_keyboard
 from app.core.settings import settings
 from app.services.user_service import UserService
+from app.services.traffic_stats_service import TrafficStatsService
 from app.services.xray_manager import XrayManager
 
 router = Router()
@@ -52,22 +53,23 @@ def build_stats_text(user, used_bytes: int = 0) -> str:
         f"<i>* 1 TB не является ограничением и нужен лишь для удобного отображения расхода.</i>"
     )
 
-async def _get_user_traffic(telegram_id: int) -> int:
+async def _get_user_traffic(telegram_id: int, session) -> int:
     try:
         xray = XrayManager()
-        stats = await xray.get_live_traffic_stats()
-        return stats.get(str(telegram_id), 0)
+        stats = await xray.get_live_traffic_stats(reset=True)
+        live_bytes = stats.get(str(telegram_id), 0)
+        return await TrafficStatsService.persist_and_get_total(session, telegram_id, live_bytes)
     except Exception:
         return 0
 
 @router.message(Command("stats"))
 @router.message(F.text == "📊 Статистика")
-async def stats_handler(message: Message, user_service: UserService) -> None:
+async def stats_handler(message: Message, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(message.from_user.id)
     if user is None:
         await message.answer("Профиль не найден. Нажмите /start для регистрации.")
         return
-    used_bytes = await _get_user_traffic(user.telegram_id)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     await message.answer(build_stats_text(user, used_bytes))
 
 @router.message(Command("help"))
@@ -91,22 +93,22 @@ async def help_callback(callback: CallbackQuery) -> None:
     await callback.answer()
 
 @router.callback_query(F.data == "menu_stats")
-async def stats_callback(callback: CallbackQuery, user_service: UserService) -> None:
+async def stats_callback(callback: CallbackQuery, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if user is None:
         await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
         return
-    used_bytes = await _get_user_traffic(user.telegram_id)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     await callback.message.answer(build_stats_text(user, used_bytes))
     await callback.answer()
 
 @router.callback_query(F.data == "menu_profile")
-async def profile_callback(callback: CallbackQuery, user_service: UserService) -> None:
+async def profile_callback(callback: CallbackQuery, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if user is None:
         await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
         return
-    used_bytes = await _get_user_traffic(user.telegram_id)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN, format_bytes(used_bytes))
     await callback.message.answer(text, reply_markup=keyboard)
     await callback.answer()

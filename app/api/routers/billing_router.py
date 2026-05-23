@@ -81,8 +81,11 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
 
     if not await billing.activate_payment(payment_obj.id, event_id):
+        await session.commit()
         logger.warning("Payment activation returned retry", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"})
         return {"status": "retry"}
+
+    await session.commit()
 
     try:
         keyboard = InlineKeyboardMarkup(
