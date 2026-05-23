@@ -1,229 +1,125 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AnKo VPN | Admin</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <style>
-    :root{ color-scheme:dark; --bg:#070b12; --text:#eef3ff; --muted:#8d98ad; --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.18); --ok:#56e0aa; --bad:#ff6b7a; --accent:#8ab4ff; }
-    *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-    body{ margin:0; font-family:Inter,system-ui,sans-serif; background:radial-gradient(circle at 18% 0%, rgba(89,131,255,.25), transparent 30rem), var(--bg); color:var(--text); padding-bottom:90px; }
-    .wrap{ max-width:1180px; margin:0 auto; padding:16px 14px; }
-    
-    .hero{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:14px; }
-    h1{ margin:0; font-size:clamp(32px,7vw,54px); line-height:.98; letter-spacing:-.075em; }
-    .subtitle{ color:var(--muted); margin-top:7px; font-size:15px; }
-    
-    .status-strip{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:8px; margin-bottom:12px; }
-    .status-card{ background:linear-gradient(145deg, rgba(255,255,255,.088), rgba(255,255,255,.045)); border:1px solid var(--line); border-radius:24px; padding:13px; display:flex; justify-content:space-between; align-items:center; backdrop-filter:blur(20px); }
-    .card-title{ color:var(--muted); font-size:12px; margin-bottom:6px; }
-    .badge{ display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px; font-weight:900; font-size:13px; }
-    .badge.ok{ color:var(--ok); background:rgba(86,224,170,.13); }
-    .badge.bad{ color:var(--bad); background:rgba(255,107,122,.13); }
-
-    .panel{ background:rgba(255,255,255,.05); border:1px solid var(--line); border-radius:24px; padding:16px; margin-bottom:14px; backdrop-filter:blur(20px); }
-    .toolbar{ display:flex; gap:10px; flex-wrap:wrap; }
-    .toolbar input{ flex:1; min-width:220px; background:rgba(0,0,0,.3); color:var(--text); border:1px solid var(--line); border-radius:15px; padding:12px 13px; outline:none; }
-    
-    button, .btn{ border:1px solid var(--line); background:rgba(255,255,255,.09); color:var(--text); border-radius:15px; padding:11px 13px; font-weight:850; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:.15s ease; text-decoration:none; }
-    button:hover{ background:rgba(255,255,255,.14); transform:translateY(-1px); }
-    button.primary{ background:linear-gradient(135deg, rgba(138,180,255,.28), rgba(138,180,255,.13)); border-color:rgba(138,180,255,.38); }
-    
-    .btn-mini{ width:42px; height:42px; padding:0; border-radius:14px; flex-shrink:0; background:rgba(255,255,255,.05); border:1px solid var(--line); color:var(--muted); font-size:16px; }
-    .btn-mini:hover{ color:var(--text); background:rgba(255,255,255,.12); }
-    .btn-mini.danger:hover{ color:var(--bad); background:rgba(255,107,122,.1); border-color:rgba(255,107,122,.2); }
-    .btn-mini.success:hover{ color:var(--ok); background:rgba(86,224,170,.1); border-color:rgba(86,224,170,.2); }
-
-    .users-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:12px; }
-    .user-card{ background:linear-gradient(145deg, rgba(255,255,255,.088), rgba(255,255,255,.045)); border:1px solid var(--line); border-radius:24px; padding:18px; box-shadow:0 24px 70px rgba(0,0,0,.28); backdrop-filter:blur(20px); }
-    .user-head{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:12px; }
-    .user-title{ font-weight:950; font-size:24px; letter-spacing:-.04em; line-height:1; }
-    .muted{ color:var(--muted); font-size:13px; }
-    .user-actions{ display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
-
-    .access-panel{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; padding:8px 14px; border-radius:16px; background:rgba(255,255,255,.03); border:1px solid var(--line2); min-height:48px; }
-    .access-code{ font-size:13px; font-weight:700; font-family:monospace; color:var(--accent); word-break:break-all; max-width:70%; line-height:1.4; }
-
-    /* Компактная плотная кнопка */
-    .pending-float { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 100; display: {% if pending|length > 0 %}block{% else %}none{% endif %}; }
-    .pending-compact-btn {
-      padding: 12px 22px; border-radius: 999px; 
-      background: linear-gradient(135deg, #ffc107, #ff9800); 
-      border: 1px solid #ffca28; 
-      color: #1a0f00; 
-      box-shadow: 0 8px 24px rgba(0,0,0,0.8), 0 0 30px rgba(255,152,0,0.3); 
-      font-weight: 800; 
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    /* Модалки */
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
-    .modal-card { background: #070b12; border: 1px solid var(--line); border-radius: 28px; padding: 24px; width: 90%; max-width: 500px; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
-    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .pending-modal-list { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; }
-    .pending-modal-list li { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin 2.0 | VPN Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
-<body>
-  <div class="wrap">
-    
-    <div class="hero">
+<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-slate-100 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-8">
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
       <div>
-        <h1>Панель управления</h1>
-        <div class="subtitle">AnKo VPN Manager v2 | {{ total_users }} юзеров</div>
+        <h1 class="text-4xl md:text-5xl font-black tracking-tight">Админка 2.0</h1>
+        <p class="text-slate-400 mt-2">Современная панель управления пользователями VPN</p>
       </div>
-      <a href="/admin/logout" class="muted" style="text-decoration:none; font-weight:700;">Выход</a>
-    </div>
+      <a href="/admin/logout" class="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2 hover:bg-slate-800 transition">
+        <i class="fa-solid fa-right-from-bracket"></i> Выход
+      </a>
+    </header>
 
-    <div class="status-strip">
-      <div class="status-card">
-        <div><div class="card-title">Xray Core</div><div class="muted">127.0.0.1:8443</div></div>
-        <span class="badge ok">Работает</span>
+    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
+        <p class="text-slate-400 text-sm">Всего пользователей</p><p class="text-3xl font-extrabold mt-2">{{ total_users }}</p>
       </div>
-      <div class="status-card">
-        <div><div class="card-title">Xray API</div><div class="muted">127.0.0.1:10085</div></div>
-        <span class="badge ok">Доступен</span>
+      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
+        <p class="text-slate-400 text-sm">Активных</p><p class="text-3xl font-extrabold mt-2 text-emerald-400">{{ active_users }}</p>
       </div>
-    </div>
+      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
+        <p class="text-slate-400 text-sm">Общий трафик</p><p class="text-3xl font-extrabold mt-2 text-blue-300">{{ total_traffic }}</p>
+      </div>
+      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
+        <p class="text-slate-400 text-sm">Pending Actions</p><p class="text-3xl font-extrabold mt-2 text-amber-400">{{ pending|length }}</p>
+      </div>
+    </section>
 
-    <div class="panel" style="margin-bottom:14px; padding:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;">
-        <div>
-           <div style="color:var(--muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px;">Общий расход трафика</div>
-           <div style="font-size:32px; font-weight:900; line-height:1;">{{ total_traffic }}</div>
-        </div>
-        <div style="text-align:right;">
-           <div style="color:var(--muted); font-size:13px; margin-bottom:4px;">Лимит: <b style="color:var(--text)">1 TB</b></div>
-           <div class="badge ok" style="font-size:12px; background:rgba(86,224,170,.15);">{{ traffic_percent | default(0) }}%</div>
-        </div>
-      </div>
-      <div style="width:100%; height:10px; background:rgba(255,255,255,0.06); border-radius:999px; overflow:hidden;">
-        <div style="width: {{ traffic_percent | default(0) }}%; min-width: 1%; height:100%; background:linear-gradient(90deg, var(--accent), var(--ok)); border-radius:999px; box-shadow:0 0 15px rgba(86,224,170,.4); transition: width 0.5s ease;"></div>
-      </div>
-    </div>
-
-    <div class="panel toolbar">
-      <form method="get" action="/admin" style="display:flex; flex:1; gap:10px;">
-        <input type="text" name="q" placeholder="Поиск по ID или UUID..." value="{{ query }}">
-        <button type="submit">Поиск</button>
+    <section class="rounded-2xl bg-slate-900/70 border border-slate-700 p-4 shadow-xl mb-6">
+      <form method="get" action="/admin" class="flex flex-col sm:flex-row gap-3">
+        <input type="text" name="q" value="{{ query }}" placeholder="Поиск по Telegram ID..." class="flex-1 rounded-xl bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button type="submit" class="rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-2 font-semibold"><i class="fa-solid fa-magnifying-glass mr-2"></i>Найти</button>
       </form>
-      <button class="primary" onclick="openAddModal()">+ Добавить</button>
-    </div>
+    </section>
 
-    <div class="users-grid">
+    <section class="space-y-4">
       {% for u in users %}
-      <div class="user-card">
-        <div class="user-head">
-          <div style="display:flex; flex-direction:column; gap:6px;">
-            <div class="user-title">{{ u.telegram_id }}</div>
-            <div class="muted">Доступ до: <b style="color:var(--text)">{{ u.sub_end_date }}</b></div>
+      <article class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div class="space-y-2">
+            <div class="text-xl font-bold">ID {{ u.telegram_id }}</div>
+            <div class="text-slate-400 text-sm">UUID: <span class="font-mono">{{ u.masked_uuid }}</span>
+              <button type="button" onclick="copyUUID('{{ u.vless_uuid }}')" class="ml-2 text-blue-300 hover:text-blue-200" title="Копировать UUID"><i class="fa-regular fa-copy"></i></button>
+            </div>
+            <div>
+              {% if u.is_active %}
+                <span class="inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-300 px-3 py-1 text-xs font-semibold">Активен</span>
+              {% else %}
+                <span class="inline-flex items-center rounded-full bg-rose-500/20 text-rose-300 px-3 py-1 text-xs font-semibold">Отключен</span>
+              {% endif %}
+              <span class="ml-2 text-sm text-slate-300">
+                {% if u.days_left is none %}
+                  {{ u.sub_end_date }}
+                {% elif u.days_left > 0 %}
+                  {{ u.sub_end_date }} (Осталось {{ u.days_left }} дней)
+                {% else %}
+                  {{ u.sub_end_date }} (Истекла)
+                {% endif %}
+              </span>
+            </div>
           </div>
-          {% if u.is_active %}
-            <span class="badge ok">Активен</span>
-          {% else %}
-            <span class="badge bad">Отключен</span>
-          {% endif %}
-        </div>
-        
-        <div style="background:rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.04); padding: 12px 14px; border-radius: 16px; margin: 14px 0;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:8px;">
-            <span style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:800; letter-spacing:0.05em;">Трафик</span>
-            <span style="font-size:14px; font-weight:800;"><span style="color:var(--ok)">{{ u.traffic }}</span> <span style="color:var(--muted); font-size:12px; font-weight:600;">/ 1 TB</span></span>
-          </div>
-          <div style="width:100%; height:6px; background:rgba(255,255,255,0.06); border-radius:999px; overflow:hidden;">
-            <div style="width: {{ u.traffic_percent | default(0) }}%; min-width: 2%; height:100%; background:linear-gradient(90deg, var(--accent), var(--ok)); border-radius:999px;"></div>
+
+          <div class="min-w-[280px]">
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-1"><span>Трафик</span><span>{{ u.traffic }} / 1 TB</span></div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-emerald-400" style="width: {{ u.traffic_percent }}%"></div></div>
           </div>
         </div>
 
-        <div class="access-panel">
-          <div class="access-code">{{ u.vless_uuid }}</div>
-          <button style="background:rgba(255,255,255,.08); padding:8px 12px; border-radius:12px; border:1px solid var(--line); color:white; cursor:pointer; font-size:12px; font-weight:800; transition:0.2s;" onmouseover="this.style.background='rgba(255,255,255,.15)'" onmouseout="this.style.background='rgba(255,255,255,.08)'" onclick="copyText('{{ u.vless_uuid }}')"><i class="fa-solid fa-copy"></i></button>
-        </div>
-
-        <div class="user-actions">
+        <div class="mt-4 flex flex-wrap items-center gap-2">
           <form method="post" action="/admin/user/toggle">
-            <input type="hidden" name="user_id" value="{{ u.id }}">
-            {% if u.is_active %}
-              <button class="btn-mini danger" title="Отключить" type="submit">
-                <i class="fa-solid fa-ban"></i>
-              </button>
-            {% else %}
-              <button class="btn-mini success" title="Включить" type="submit">
-                <i class="fa-solid fa-check"></i>
-              </button>
-            {% endif %}
+            <input type="hidden" name="user_id" value="{{ u.id }}" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Вкл/Выкл"><i class="fa-solid {% if u.is_active %}fa-pause{% else %}fa-play{% endif %}"></i></button>
           </form>
-          
-          <button class="btn-mini" title="Обновить UUID" onclick="alert('Генерация нового UUID будет доступна в следующем апдейте')">
-            <i class="fa-solid fa-rotate"></i>
-          </button>
 
-          <form method="post" action="/admin/user/delete" onsubmit="return confirm('Добавить удаление пользователя {{u.telegram_id}} в очередь изменений?')" style="margin-left:auto;">
-            <input type="hidden" name="user_id" value="{{ u.id }}">
-            <button class="btn-mini danger" title="Удалить" type="submit">
-              <i class="fa-solid fa-trash"></i>
-            </button>
+          <form method="post" action="/admin/user/add_days">
+            <input type="hidden" name="user_id" value="{{ u.id }}" /><input type="hidden" name="days" value="30" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="+1 месяц">+1M</button>
+          </form>
+
+          <form method="post" action="/admin/user/add_days">
+            <input type="hidden" name="user_id" value="{{ u.id }}" /><input type="hidden" name="days" value="90" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="+3 месяца">+3M</button>
+          </form>
+
+          <form method="post" action="/admin/user/set_infinite">
+            <input type="hidden" name="user_id" value="{{ u.id }}" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Безлимит"><i class="fa-solid fa-infinity"></i></button>
+          </form>
+
+          <form method="post" action="/admin/user/add_days" class="flex items-center gap-2">
+            <input type="hidden" name="user_id" value="{{ u.id }}" />
+            <input type="number" min="1" name="days" placeholder="Дней" class="w-20 rounded-xl bg-slate-800 border border-slate-700 px-2 py-2 text-sm" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Указать срок"><i class="fa-regular fa-calendar"></i></button>
+          </form>
+
+          <form method="post" action="/admin/user/reset_traffic">
+            <input type="hidden" name="user_id" value="{{ u.id }}" />
+            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Обнулить трафик"><i class="fa-solid fa-broom"></i></button>
+          </form>
+
+          <form method="post" action="/admin/user/delete" class="ml-auto" onsubmit="return confirm('Удалить пользователя {{ u.telegram_id }}?')">
+            <input type="hidden" name="user_id" value="{{ u.id }}" />
+            <button class="rounded-xl border border-rose-700/70 text-rose-300 px-3 py-2 hover:bg-rose-900/30" title="Удалить"><i class="fa-solid fa-trash"></i></button>
           </form>
         </div>
-      </div>
+      </article>
       {% endfor %}
-    </div>
-
+    </section>
   </div>
 
-  <div class="pending-float">
-    <button class="pending-compact-btn" onclick="openPendingModal()">
-      <i class="fa-solid fa-clock-rotate-left" style="margin-right:6px;"></i> {{ pending|length }} изменений
-    </button>
-  </div>
-
-  <div class="modal" id="pendingModal" onclick="closePendingModal(event)">
-    <div class="modal-card" onclick="event.stopPropagation()">
-      <div class="modal-head">
-        <h2 style="margin:0; font-size:22px;">Очередь изменений</h2>
-        <button onclick="document.getElementById('pendingModal').style.display='none'" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">✕</button>
-      </div>
-      <ul class="pending-modal-list">
-        {% for p in pending %}
-          <li>
-            <span>
-              {% if p.action_type == 'add' %}<b style="color:var(--accent)"><i class="fa-solid fa-plus"></i> Добавление</b>{% endif %}
-              {% if p.action_type == 'toggle_disable' %}<b style="color:var(--bad)"><i class="fa-solid fa-ban"></i> Отключение</b>{% endif %}
-              {% if p.action_type == 'toggle_enable' %}<b style="color:var(--ok)"><i class="fa-solid fa-check"></i> Включение</b>{% endif %}
-              {% if p.action_type == 'delete' %}<b style="color:var(--bad)"><i class="fa-solid fa-trash"></i> Удаление</b>{% endif %}
-            </span>
-            <b style="font-family:monospace;">ID: {{ p.tg_id }}</b>
-          </li>
-        {% endfor %}
-      </ul>
-      <form method="post" action="/admin/apply" style="margin-top:20px;">
-        <button class="primary" type="submit" style="width:100%; padding:14px; font-size:16px; font-weight:800;">Применить изменения в Xray</button>
-      </form>
-    </div>
-  </div>
-
-  <div class="modal" id="addModal" onclick="closeAddModal(event)">
-    <div class="modal-card" onclick="event.stopPropagation()">
-      <div class="modal-head">
-        <h2 style="margin:0; font-size:22px;">Добавить пользователя</h2>
-        <button onclick="closeAddModal(event)" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">✕</button>
-      </div>
-      <form method="post" action="/admin/user/add" style="display:flex; flex-direction:column; gap:15px;">
-        <input type="text" name="telegram_id" placeholder="Telegram ID (например 12345678)" style="background:rgba(0,0,0,.3); color:var(--text); border:1px solid var(--line); border-radius:15px; padding:12px 13px; outline:none;" required>
-        <button class="primary" type="submit" style="padding:14px; font-size:15px;">Добавить в очередь</button>
-      </form>
-    </div>
-  </div>
-
-  <script>
-    function openPendingModal() { document.getElementById('pendingModal').style.display='flex'; }
-    function closePendingModal(e) { if(e.target.id === 'pendingModal') e.target.style.display='none'; }
-    function openAddModal() { document.getElementById('addModal').style.display='flex'; }
-    function closeAddModal(e) { document.getElementById('addModal').style.display='none'; }
-    function copyText(text) { navigator.clipboard.writeText(text).then(() => alert('UUID скопирован в буфер обмена!')); }
-  </script>
+<script>
+function copyUUID(value) {
+  navigator.clipboard.writeText(value).then(() => alert('UUID скопирован'));
+}
+</script>
 </body>
 </html>
