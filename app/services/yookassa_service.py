@@ -73,7 +73,22 @@ class YooKassaService:
             return None
 
     async def fetch_remote_payment(self, payment_id: str):
-        return await asyncio.to_thread(YooPayment.find_one, payment_id)
+        last_error: Exception | None = None
+        for attempt in range(settings.YOOKASSA_REQUEST_RETRIES + 1):
+            try:
+                return await asyncio.wait_for(
+                    asyncio.to_thread(YooPayment.find_one, payment_id),
+                    timeout=settings.YOOKASSA_REQUEST_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                last_error = exc
+                logging.getLogger(__name__).warning(
+                    "YooKassa find_one failed",
+                    extra={"payment_id": payment_id, "attempt": attempt + 1},
+                )
+                if attempt < settings.YOOKASSA_REQUEST_RETRIES:
+                    await asyncio.sleep(0.2 * (2 ** attempt))
+        raise RuntimeError(f"YooKassa find_one failed after retries for payment {payment_id}") from last_error
 
     async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float) -> str:
         payment_data = {

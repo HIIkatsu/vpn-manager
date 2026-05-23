@@ -73,11 +73,25 @@ class XrayManager:
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
                 request = command_pb2.AlterInboundRequest(tag=tag, operation=op_typed)
-                try:
-                    await stub.AlterInbound(request)
-                except grpc.RpcError as e:
-                    if "already exists" not in str(e.details()):
-                        success_overall = False
+                done = False
+                for attempt in range(settings.XRAY_REQUEST_RETRIES + 1):
+                    try:
+                        await asyncio.wait_for(stub.AlterInbound(request), timeout=settings.XRAY_REQUEST_TIMEOUT_SECONDS)
+                        done = True
+                        break
+                    except grpc.RpcError as e:
+                        if "already exists" in str(e.details()):
+                            done = True
+                            break
+                        logger.warning("Xray add_client rpc failed", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        if attempt < settings.XRAY_REQUEST_RETRIES:
+                            await asyncio.sleep(0.2 * (2 ** attempt))
+                    except asyncio.TimeoutError:
+                        logger.warning("Xray add_client rpc timeout", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        if attempt < settings.XRAY_REQUEST_RETRIES:
+                            await asyncio.sleep(0.2 * (2 ** attempt))
+                if not done:
+                    success_overall = False
         except Exception as e:
             logger.error(f"Xray add_client failed: {e}")
             return False
@@ -93,11 +107,25 @@ class XrayManager:
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
                 request = command_pb2.AlterInboundRequest(tag=tag, operation=op_typed)
-                try:
-                    await stub.AlterInbound(request)
-                except grpc.RpcError as e:
-                    if "not found" not in str(e.details()).lower():
-                        success_overall = False
+                done = False
+                for attempt in range(settings.XRAY_REQUEST_RETRIES + 1):
+                    try:
+                        await asyncio.wait_for(stub.AlterInbound(request), timeout=settings.XRAY_REQUEST_TIMEOUT_SECONDS)
+                        done = True
+                        break
+                    except grpc.RpcError as e:
+                        if "not found" in str(e.details()).lower():
+                            done = True
+                            break
+                        logger.warning("Xray remove_client rpc failed", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        if attempt < settings.XRAY_REQUEST_RETRIES:
+                            await asyncio.sleep(0.2 * (2 ** attempt))
+                    except asyncio.TimeoutError:
+                        logger.warning("Xray remove_client rpc timeout", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        if attempt < settings.XRAY_REQUEST_RETRIES:
+                            await asyncio.sleep(0.2 * (2 ** attempt))
+                if not done:
+                    success_overall = False
         except Exception as e:
             logger.error(f"Xray remove_client failed: {e}")
             return False

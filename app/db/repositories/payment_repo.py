@@ -38,3 +38,17 @@ class PaymentRepository(BaseRepository[Payment]):
             .limit(1)
         )
         return await self.session.scalar(stmt)
+
+    async def get_stale_processing(self, started_before: datetime, limit: int) -> list[Payment]:
+        stmt = (
+            select(Payment)
+            .where(
+                Payment.status == "processing",
+                Payment.processing_started_at.is_not(None),
+                Payment.processing_started_at <= started_before,
+            )
+            .order_by(Payment.processing_started_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.scalars(stmt)
+        return list(result.all())
