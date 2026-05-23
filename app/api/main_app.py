@@ -93,7 +93,7 @@ async def get_subscription(uuid: str, session: AsyncSession = Depends(get_async_
     if not user or not user.is_active:
         return Response(content="", status_code=403)
     xray = XrayManager()
-    link = xray.generate_vless_link(user.vless_uuid)
+    link = xray.generate_vless_subscription(user.vless_uuid)
     b64_link = __import__('base64').b64encode(link.encode('utf-8')).decode('utf-8')
     sub_info = await get_dynamic_sub_info(locals())
     return Response(

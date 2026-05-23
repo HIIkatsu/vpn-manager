@@ -1,6 +1,19 @@
+# Secrets
 .env
+
+# Environments
+venv/
+env/
+
+# Python
 __pycache__/
 *.pyc
-venv/
-.venv/
-pg_data/
+*.pyo
+*.pyd
+
+# Databases
+*.db
+*.sqlite3
+
+# Logs
+*.log
