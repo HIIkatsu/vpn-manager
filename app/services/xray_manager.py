@@ -3,7 +3,6 @@ import grpc
 import json
 import re
 import asyncio
-import urllib.parse
 from uuid import UUID
 from app.core.settings import settings
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
@@ -27,49 +26,65 @@ class XrayManager:
     _channel = None
     _inbound_tags = None
     _target = "127.0.0.1:8080"
+    _config_lock = asyncio.Lock()
 
     @classmethod
-    def _init_config(cls):
+    async def _init_config(cls):
         if cls._inbound_tags is not None:
             return
-        cls._inbound_tags = []
-        try:
-            with open("/usr/local/etc/xray/config.json", "r") as f:
-                conf = json.load(f)
-                for ib in conf.get("inbounds", []):
-                    if ib.get("protocol") == "dokodemo-door":
-                        cls._target = f"127.0.0.1:{ib.get('port')}"
-                    if ib.get("protocol") == "vless":
-                        tag = ib.get("tag")
-                        if tag:
-                            cls._inbound_tags.append(tag)
-        except Exception:
-            pass
-        if not cls._inbound_tags:
-            cls._inbound_tags = ["vless"]
+        async with cls._config_lock:
+            if cls._inbound_tags is not None:
+                return
+            conf = {}
+            try:
+                conf = await asyncio.to_thread(cls._read_xray_config)
+            except Exception:
+                logger.exception("Failed to load xray config, using safe defaults")
+            cls._inbound_tags = []
+            for ib in conf.get("inbounds", []):
+                if ib.get("protocol") == "dokodemo-door":
+                    cls._target = f"127.0.0.1:{ib.get('port')}"
+                if ib.get("protocol") == "vless":
+                    tag = ib.get("tag")
+                    if tag:
+                        cls._inbound_tags.append(tag)
+            if not cls._inbound_tags:
+                cls._inbound_tags = ["vless"]
+
+    @staticmethod
+    def _read_xray_config() -> dict:
+        with open("/usr/local/etc/xray/config.json", "r", encoding="utf-8") as f:
+            return json.load(f)
 
     @classmethod
-    def get_channel(cls):
-        cls._init_config()
+    async def get_channel(cls):
+        await cls._init_config()
         if cls._channel is None:
             cls._channel = grpc.aio.insecure_channel(cls._target)
         return cls._channel
 
-    def __init__(self):
-        self._init_config()
+    async def initialize(self):
+        await self._init_config()
         self.target = self._target
         self.inbound_tags = self._inbound_tags
+
+    @classmethod
+    async def close_channel(cls):
+        if cls._channel is not None:
+            await cls._channel.close()
+            cls._channel = None
 
     async def add_client(self, email: str, uuid: str) -> bool:
         success_overall = True
         try:
+            await self.initialize()
             account_bytes = _build_vless_account_message(uuid)
             typed_account = typed_message_pb2.TypedMessage(type="xray.proxy.vless.Account", value=account_bytes)
             user = user_pb2.User(email=email, account=typed_account)
             operation = command_pb2.AddUserOperation(user=user)
             op_typed = typed_message_pb2.TypedMessage(type="xray.app.proxyman.command.AddUserOperation", value=operation.SerializeToString())
             
-            channel = self.get_channel()
+            channel = await self.get_channel()
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
                 request = command_pb2.AlterInboundRequest(tag=tag, operation=op_typed)
@@ -100,10 +115,11 @@ class XrayManager:
     async def remove_client(self, email: str) -> bool:
         success_overall = True
         try:
+            await self.initialize()
             operation = command_pb2.RemoveUserOperation(email=email)
             op_typed = typed_message_pb2.TypedMessage(type="xray.app.proxyman.command.RemoveUserOperation", value=operation.SerializeToString())
             
-            channel = self.get_channel()
+            channel = await self.get_channel()
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
                 request = command_pb2.AlterInboundRequest(tag=tag, operation=op_typed)
