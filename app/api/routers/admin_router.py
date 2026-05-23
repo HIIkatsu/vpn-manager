@@ -35,12 +35,12 @@ async def admin_dashboard(
     if q:
         stmt = stmt.where(cast(User.telegram_id, String).like(f"%{q.strip()}%"))
 
-    users_task = asyncio.create_task(session.execute(stmt))
-    pending_task = asyncio.create_task(session.execute(select(PendingAction).options(joinedload(PendingAction.user))))
+    
+    
 
     live_stats = await stats_task
-    users_db = (await users_task).scalars().all()
-    pending_actions = (await pending_task).scalars().all()
+    users_db = (await session.execute(stmt)).scalars().all()
+    pending_actions = (await session.execute(select(PendingAction).options(joinedload(PendingAction.user)))).scalars().all()
 
     now = datetime.now(timezone.utc)
     total_bytes = 0
