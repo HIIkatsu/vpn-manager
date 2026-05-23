@@ -63,7 +63,7 @@ class YooKassaService:
         # 2) Optional HMAC mode when upstream adds signature header
         if self._is_valid_hmac_auth(signature_header, payload):
             return True
-        # 3) Fallback hardened shared secret (header/query), still constant-time
+        # 3) Fallback hardened shared secret header, still constant-time
         return self._is_valid_shared_token(shared_token)
 
     def parse_notification(self, payload: dict):
