@@ -7,18 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import settings
 from app.db.database import async_session_maker
+from app.services.transaction import session_scope
 
 security = HTTPBasic()
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
-    async with async_session_maker() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
+    async with session_scope(async_session_maker) as session:
+        yield session
 
 
 def get_current_admin(credentials: HTTPBasicCredentials = Depends(security)) -> str:

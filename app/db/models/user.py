@@ -14,6 +14,8 @@ class User(Base):
     vless_uuid: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sub_end_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    traffic_total_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    traffic_last_live_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     payments: Mapped[list["Payment"]] = relationship(back_populates="user")

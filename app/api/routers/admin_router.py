@@ -13,6 +13,7 @@ from app.api.dependencies.common import get_async_session, get_current_admin
 from app.api.utils.subscription import format_bytes
 from app.db.models import PendingAction, User
 from app.services.user_service import UserService
+from app.services.traffic_stats_service import TrafficStatsService
 from app.services.xray_manager import XrayManager
 
 router = APIRouter()
@@ -27,7 +28,7 @@ async def admin_dashboard(
     session: AsyncSession = Depends(get_async_session),
 ):
     xray = XrayManager()
-    stats_task = asyncio.create_task(xray.get_live_traffic_stats())
+    stats_task = asyncio.create_task(xray.get_live_traffic_stats(reset=True))
     stmt = select(User).order_by(User.telegram_id)
     if q:
         stmt = stmt.where(or_(User.telegram_id.like(f"%{q}%"), User.vless_uuid.like(f"%{q}%")))
@@ -41,7 +42,8 @@ async def admin_dashboard(
     users_data = []
     for u in users_db:
         used_bytes = live_stats.get(str(u.telegram_id), 0)
-        total_bytes += used_bytes
+        total_used_bytes = await TrafficStatsService.persist_and_get_total(session, u.telegram_id, used_bytes)
+        total_bytes += total_used_bytes
         users_data.append(
             {
                 "id": u.id,
@@ -49,8 +51,8 @@ async def admin_dashboard(
                 "vless_uuid": u.vless_uuid,
                 "is_active": u.is_active,
                 "sub_end_date": u.sub_end_date.strftime("%d.%m.%Y") if u.sub_end_date else "—",
-                "traffic": format_bytes(used_bytes),
-                "traffic_percent": round(min(100.0, (used_bytes / (1024**4)) * 100), 2),
+                "traffic": format_bytes(total_used_bytes),
+                "traffic_percent": round(min(100.0, (total_used_bytes / (1024**4)) * 100), 2),
             }
         )
 

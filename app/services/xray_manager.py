@@ -121,9 +121,12 @@ class XrayManager:
             return False
         return success_overall
 
-    async def get_live_traffic_stats(self) -> dict[str, int]:
+    async def get_live_traffic_stats(self, reset: bool = False) -> dict[str, int]:
         try:
-            proc = await asyncio.create_subprocess_exec("xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            cmd = ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>"]
+            if reset:
+                cmd.append("-reset")
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             stdout, stderr = await proc.communicate()
             if proc.returncode != 0: return {}
             data = json.loads(stdout.decode())

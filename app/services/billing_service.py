@@ -29,7 +29,7 @@ class BillingService:
 
     async def create_subscription_payment(self, user_id: int, amount: float) -> str:
         url = await self.yookassa_service.create_payment(self.payments, user_id, amount)
-        await self.session.commit()
+        await self.session.flush()
         return url
 
     async def activate_payment(self, payment_id: str, event_id: str | None = None) -> bool:
@@ -47,12 +47,13 @@ class BillingService:
         user = await self.users.get_by_id(payment.user_id)
         if user is None:
             payment.status = "pending"
-            await self.session.commit()
+            await self.session.flush()
             return False
             
         xray_ok = await self.xray_manager.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
         if not xray_ok:
-            await self.session.rollback()
+            payment.status = "pending"
+            await self.session.flush()
             return False
 
         payment.status = "success"
@@ -73,7 +74,7 @@ class BillingService:
         else:
             user.sub_end_date += timedelta(days=days)
 
-        await self.session.commit()
+        await self.session.flush()
         return True
     async def process_pending(self) -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)

@@ -4,6 +4,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from app.bot.keyboards.main import main_keyboard
 from app.core.settings import settings
 from app.services.user_service import UserService
+from app.services.traffic_stats_service import TrafficStatsService
 from app.services.xray_manager import XrayManager
 
 router = Router()
@@ -56,31 +57,32 @@ def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
     )
     return profile_text, InlineKeyboardMarkup(inline_keyboard=inline_buttons)
 
-async def _fetch_user_traffic(telegram_id: int) -> str:
+async def _fetch_user_traffic(telegram_id: int, session) -> str:
     try:
         xray = XrayManager()
-        stats = await xray.get_live_traffic_stats()
-        used_bytes = stats.get(str(telegram_id), 0)
+        stats = await xray.get_live_traffic_stats(reset=True)
+        live_bytes = stats.get(str(telegram_id), 0)
+        used_bytes = await TrafficStatsService.persist_and_get_total(session, telegram_id, live_bytes)
         return format_bytes(used_bytes)
     except Exception:
         return "0.00 B"
 
 @router.message(F.text.in_({"Профиль", "👤 Профиль"}))
-async def profile_handler(message: Message, user_service: UserService) -> None:
+async def profile_handler(message: Message, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(message.from_user.id)
     if user is None:
         await message.answer("❌ Профиль не найден.", reply_markup=main_keyboard)
         return
     
-    traffic = await _fetch_user_traffic(user.telegram_id)
+    traffic = await _fetch_user_traffic(user.telegram_id, session)
     text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN, traffic)
     await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 @router.callback_query(F.data == "refresh_profile")
-async def refresh_profile_callback(callback: CallbackQuery, user_service: UserService) -> None:
+async def refresh_profile_callback(callback: CallbackQuery, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if user:
-        traffic = await _fetch_user_traffic(user.telegram_id)
+        traffic = await _fetch_user_traffic(user.telegram_id, session)
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN, traffic)
         try:
             await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
@@ -89,10 +91,10 @@ async def refresh_profile_callback(callback: CallbackQuery, user_service: UserSe
     await callback.answer("Данные обновлены")
 
 @router.callback_query(F.data == "open_profile")
-async def open_profile_callback(callback: CallbackQuery, user_service: UserService) -> None:
+async def open_profile_callback(callback: CallbackQuery, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if user:
-        traffic = await _fetch_user_traffic(user.telegram_id)
+        traffic = await _fetch_user_traffic(user.telegram_id, session)
         text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN, traffic)
         await callback.message.answer(text, parse_mode="HTML", reply_markup=keyboard)
     await callback.answer()
