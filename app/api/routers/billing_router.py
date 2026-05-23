@@ -12,7 +12,7 @@ from app.api.dependencies.common import get_async_session
 from app.bot.core import bot
 from app.core.container import get_billing_service
 from app.core.logging_utils import log_context
-from app.core.security import SharedRateLimiter, ip_in_allowlist
+from app.core.security import SharedRateLimiter, WebhookReplayGuard, ip_in_allowlist
 from app.core.settings import settings
 from app.db.models import User
 from app.services.billing_service import BillingService
@@ -21,6 +21,7 @@ from app.services.yookassa_service import YooKassaService
 router = APIRouter()
 logger = logging.getLogger(__name__)
 rate_limiter = SharedRateLimiter()
+replay_guard = WebhookReplayGuard()
 
 
 @router.post("/webhook/yookassa")
@@ -55,7 +56,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     except ValueError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid client IP")
 
-    allowed = await asyncio.to_thread(rate_limiter.allow, f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60)
+    allowed = await asyncio.to_thread(rate_limiter.allow, f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60, fail_open=False)
     if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
@@ -68,7 +69,13 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         return {"status": "ignored"}
 
     payment_obj = notification.object
-    event_id = getattr(notification, "event", "") + ":" + payment_obj.id
+    payload_event_id = str(payload.get("id") or "")
+    event_id = payload_event_id or (getattr(notification, "event", "") + ":" + payment_obj.id)
+
+    is_fresh_event = await asyncio.to_thread(replay_guard.mark_if_fresh, event_id, settings.WEBHOOK_REPLAY_TTL_SECONDS)
+    if not is_fresh_event:
+        logger.info("Duplicate/replayed webhook blocked", extra=log_context(event_id=event_id, payment_id=payment_obj.id, action_source="webhook"))
+        return {"status": "duplicate"}
 
     if settings.YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY:
         remote_payment = await yookassa.fetch_remote_payment(payment_obj.id)

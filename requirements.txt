@@ -9,3 +9,4 @@ python-dotenv>=1.0.1
 alembic>=1.13.0
 
 apscheduler>=3.10.4
+redis>=5,<6
