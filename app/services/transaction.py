@@ -9,7 +9,7 @@ async def session_scope(session_factory: async_sessionmaker[AsyncSession]) -> As
     async with session_factory() as session:
         try:
             yield session
-#             await session.commit() # FIXED: UoW violation
+            await session.commit()
         except Exception:
-#             await session.rollback() # FIXED: UoW violation
+            await session.rollback()
             raise
