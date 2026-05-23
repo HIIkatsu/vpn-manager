@@ -123,8 +123,20 @@ async def auto_expiry_loop(interval_seconds: int = 1800) -> None:
             await run_auto_expiry_iteration()
             delivered, failed = await run_outbox_delivery_iteration()
             if failed:
-                logger.warning("Outbox delivery failures", extra={"failed": failed, "delivered": delivered})
+                logger.warning(
+                    "Outbox delivery failures",
+                    extra=log_context(
+                        action_source="outbox_delivery",
+                        event_id="batch",
+                        endpoint="xray.add_client",
+                    )
+                    | {"failed": failed, "delivered": delivered},
+                )
             await run_xray_reconciliation_iteration()
         except Exception as exc:
-            logger.exception("Cron Error: %s", exc)
+            logger.exception(
+                "Cron Error: %s",
+                exc,
+                extra=log_context(action_source="workers.auto_expiry_loop"),
+            )
         await asyncio.sleep(interval_seconds)

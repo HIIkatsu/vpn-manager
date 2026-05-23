@@ -5,6 +5,7 @@ import re
 import asyncio
 from uuid import UUID
 from app.core.settings import settings
+from app.core.logging_utils import log_context
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
 from app.grpc.xray_api.common.protocol import user_pb2
 from app.grpc.xray_api.common.serial import typed_message_pb2
@@ -98,17 +99,40 @@ class XrayManager:
                         if "already exists" in str(e.details()):
                             done = True
                             break
-                        logger.warning("Xray add_client rpc failed", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        logger.warning(
+                            "Xray add_client rpc failed",
+                            extra=log_context(
+                                telegram_id=email,
+                                action_source="xray_add_client",
+                                attempt=attempt + 1,
+                                endpoint=tag,
+                            ),
+                        )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
                             await asyncio.sleep(0.2 * (2 ** attempt))
                     except asyncio.TimeoutError:
-                        logger.warning("Xray add_client rpc timeout", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        logger.warning(
+                            "Xray add_client rpc timeout",
+                            extra=log_context(
+                                telegram_id=email,
+                                action_source="xray_add_client",
+                                attempt=attempt + 1,
+                                endpoint=tag,
+                            ),
+                        )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
                             await asyncio.sleep(0.2 * (2 ** attempt))
                 if not done:
                     success_overall = False
         except Exception as e:
-            logger.error(f"Xray add_client failed: {e}")
+            logger.exception(
+                "Xray add_client failed",
+                extra=log_context(
+                    telegram_id=email,
+                    action_source="xray_add_client",
+                    endpoint=self._target,
+                ),
+            )
             return False
         return success_overall
 
@@ -133,17 +157,40 @@ class XrayManager:
                         if "not found" in str(e.details()).lower():
                             done = True
                             break
-                        logger.warning("Xray remove_client rpc failed", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        logger.warning(
+                            "Xray remove_client rpc failed",
+                            extra=log_context(
+                                telegram_id=email,
+                                action_source="xray_remove_client",
+                                attempt=attempt + 1,
+                                endpoint=tag,
+                            ),
+                        )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
                             await asyncio.sleep(0.2 * (2 ** attempt))
                     except asyncio.TimeoutError:
-                        logger.warning("Xray remove_client rpc timeout", extra={"email": email, "tag": tag, "attempt": attempt + 1})
+                        logger.warning(
+                            "Xray remove_client rpc timeout",
+                            extra=log_context(
+                                telegram_id=email,
+                                action_source="xray_remove_client",
+                                attempt=attempt + 1,
+                                endpoint=tag,
+                            ),
+                        )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
                             await asyncio.sleep(0.2 * (2 ** attempt))
                 if not done:
                     success_overall = False
         except Exception as e:
-            logger.error(f"Xray remove_client failed: {e}")
+            logger.exception(
+                "Xray remove_client failed",
+                extra=log_context(
+                    telegram_id=email,
+                    action_source="xray_remove_client",
+                    endpoint=self._target,
+                ),
+            )
             return False
         return success_overall
 
