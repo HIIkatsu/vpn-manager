@@ -3,6 +3,7 @@ import logging
 
 from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.logging_utils import log_context
 from app.core.settings import settings
 from app.db.repositories.payment_repo import PaymentRepository
 from app.db.repositories.user_repo import UserRepository
@@ -91,7 +92,7 @@ class BillingService:
                 if not activated:
                     self.logger.warning(
                         "Pending payment compensation failed",
-                        extra={"payment_id": pid, "source": "process_pending"},
+                        extra=log_context(payment_id=pid, action_source="process_pending"),
                     )
 
 

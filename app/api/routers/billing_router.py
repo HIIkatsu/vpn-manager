@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies.common import get_async_session
 from app.bot.core import bot
 from app.core.container import get_billing_service
+from app.core.logging_utils import log_context
 from app.core.security import InMemoryRateLimiter, ip_in_allowlist
 from app.core.settings import settings
 from app.db.models import User
@@ -62,27 +63,27 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
 
     if payment is None:
-        logger.warning("Webhook payment not found", extra={"payment_id": payment_obj.id, "source": "webhook"})
+        logger.warning("Webhook payment not found", extra=log_context(payment_id=payment_obj.id, action_source="webhook"))
         return {"status": "not_found"}
     if payment.processed_event_id == event_id:
         logger.info(
-            "Duplicate payment event received", extra={"event_id": event_id, "payment_id": payment_obj.id, "source": "webhook"}
+            "Duplicate payment event received", extra=log_context(event_id=event_id, payment_id=payment_obj.id, action_source="webhook")
         )
         return {"status": "duplicate"}
     if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
         logger.warning(
-            "Payment amount validation failed", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"}
+            "Payment amount validation failed", extra=log_context(payment_id=payment_obj.id, event_id=event_id, action_source="webhook")
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
     if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
         logger.warning(
-            "Payment metadata validation failed", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"}
+            "Payment metadata validation failed", extra=log_context(payment_id=payment_obj.id, event_id=event_id, action_source="webhook")
         )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
 
     if not await billing.activate_payment(payment_obj.id, event_id):
         await session.commit()
-        logger.warning("Payment activation returned retry", extra={"payment_id": payment_obj.id, "event_id": event_id, "source": "webhook"})
+        logger.warning("Payment activation returned retry", extra=log_context(payment_id=payment_obj.id, event_id=event_id, action_source="webhook"))
         return {"status": "retry"}
 
     await session.commit()
