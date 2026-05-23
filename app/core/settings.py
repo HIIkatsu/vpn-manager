@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     YOOKASSA_SECRET_KEY: str
 
     YOOKASSA_WEBHOOK_AUTH: str | None = None
+
+    YOOKASSA_WEBHOOK_SHARED_TOKEN: str | None = None
+    YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY: bool = True
     YOOKASSA_WEBHOOK_IP_ALLOWLIST: str = ""
     TRUSTED_PROXY_IPS: str = ""
 

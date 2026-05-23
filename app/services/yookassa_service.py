@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import hmac
-import logging
+import json
 import uuid
 from decimal import Decimal
 from hashlib import sha256
@@ -29,28 +29,42 @@ class YooKassaService:
             and hmac.compare_digest(authorization_header.strip(), self.expected_basic_auth())
         )
 
-    def _expected_hmac_signature(self, body_bytes: bytes) -> str:
-        secret = settings.YOOKASSA_SECRET_KEY.encode("utf-8")
-        return hmac.new(secret, body_bytes, sha256).hexdigest()
+    def _is_valid_shared_token(self, token: str | None) -> bool:
+        expected = settings.YOOKASSA_WEBHOOK_SHARED_TOKEN
+        if not expected or not token:
+            return False
+        return hmac.compare_digest(token.strip(), expected)
 
-    def _is_valid_hmac_auth(self, signature_header: str | None, body_bytes: bytes) -> bool:
+    def _canonical_webhook_payload(self, payload: dict) -> bytes:
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+    def _expected_hmac_signature(self, payload: dict) -> str:
+        secret = settings.YOOKASSA_SECRET_KEY.encode("utf-8")
+        canonical = self._canonical_webhook_payload(payload)
+        return hmac.new(secret, canonical, sha256).hexdigest()
+
+    def _is_valid_hmac_auth(self, signature_header: str | None, payload: dict) -> bool:
         if not signature_header:
             return False
-        candidate = signature_header.strip()
-        expected = self._expected_hmac_signature(body_bytes)
+        candidate = signature_header.strip().lower()
+        expected = self._expected_hmac_signature(payload)
         return hmac.compare_digest(candidate, expected)
 
     def is_valid_webhook_auth(
         self,
         authorization_header: str | None,
-        signature_header: str | None = None,
-        body_bytes: bytes | None = None,
+        signature_header: str | None,
+        shared_token: str | None,
+        payload: dict,
     ) -> bool:
+        # 1) Native YooKassa Basic Auth (best when header is preserved)
         if self._is_valid_basic_auth(authorization_header):
             return True
-        if body_bytes is None:
-            return False
-        return self._is_valid_hmac_auth(signature_header, body_bytes)
+        # 2) Optional HMAC mode when upstream adds signature header
+        if self._is_valid_hmac_auth(signature_header, payload):
+            return True
+        # 3) Fallback hardened shared secret (header/query), still constant-time
+        return self._is_valid_shared_token(shared_token)
 
     def parse_notification(self, payload: dict):
         try:
@@ -80,7 +94,6 @@ class YooKassaService:
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},
             "capture": True,
-            # Вот здесь меняем веб-ссылку на жесткий диплинк
             "confirmation": {"type": "redirect", "return_url": "tg://resolve?domain=NeuroVPN_AI_bot"},
             "description": "Продление VPN-подписки на 30 дней",
             "metadata": {"user_id": str(user_id)},
