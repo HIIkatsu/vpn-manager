@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import json
 import logging
@@ -26,7 +27,16 @@ rate_limiter = SharedRateLimiter()
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
     yookassa = YooKassaService()
     raw_body = await request.body()
-    if not yookassa.is_valid_webhook_auth(request):
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
+
+    auth_header = request.headers.get("authorization")
+    signature_header = request.headers.get("x-content-hmac-sha256")
+    shared_token = request.headers.get("x-yookassa-webhook-token") or request.query_params.get("token")
+
+    if not yookassa.is_valid_webhook_auth(auth_header, signature_header, shared_token, payload):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
 
     trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
@@ -45,19 +55,25 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     except ValueError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid client IP")
 
-    if not rate_limiter.allow(f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60):
+    allowed = await asyncio.to_thread(rate_limiter.allow, f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60)
+    if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
     allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
     if not ip_in_allowlist(client_ip, allowlist):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
 
-    notification = yookassa.parse_notification(json.loads(raw_body.decode("utf-8")))
+    notification = yookassa.parse_notification(payload)
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
 
     payment_obj = notification.object
     event_id = getattr(notification, "event", "") + ":" + payment_obj.id
+
+    if settings.YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY:
+        remote_payment = await yookassa.fetch_remote_payment(payment_obj.id)
+        if remote_payment is None or remote_payment.status != "succeeded":
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Payment verification failed")
 
     billing: BillingService = get_billing_service(session)
     payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
