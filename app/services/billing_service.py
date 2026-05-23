@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 
 from aiogram import Bot
@@ -9,6 +10,7 @@ from app.db.repositories.payment_repo import PaymentRepository
 from app.db.repositories.user_repo import UserRepository
 from app.services.xray_manager import XrayManager
 from app.services.yookassa_service import YooKassaService
+from app.db.repositories.outbox_repo import OutboxRepository
 
 class BillingService:
     def __init__(
@@ -19,6 +21,7 @@ class BillingService:
         xray_manager: XrayManager,
         yookassa_service: YooKassaService,
         notifier: Bot,
+        outbox: OutboxRepository | None = None,
     ):
         self.session = session
         self.users = users
@@ -26,6 +29,7 @@ class BillingService:
         self.xray_manager = xray_manager
         self.yookassa_service = yookassa_service
         self.notifier = notifier
+        self.outbox = outbox or OutboxRepository(session)
         self.logger = logging.getLogger(__name__)
 
     async def create_subscription_payment(self, user_id: int, amount: float) -> str:
@@ -53,13 +57,6 @@ class BillingService:
             await self.session.flush()
             return False
             
-        xray_ok = await self.xray_manager.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
-        if not xray_ok:
-            payment.status = "pending"
-            payment.processing_started_at = None
-            await self.session.flush()
-            return False
-
         payment.status = "success"
         payment.processing_started_at = None
         if event_id:
@@ -78,6 +75,15 @@ class BillingService:
             user.sub_end_date = now + timedelta(days=days)
         else:
             user.sub_end_date += timedelta(days=days)
+
+        await self.session.flush()
+        await self.outbox.enqueue(
+            event_type="xray.add_client",
+            aggregate_type="payment",
+            aggregate_id=payment.payment_id,
+            dedup_key=f"xray.add_client:{payment.payment_id}",
+            payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid}),
+        )
 
         await self.session.flush()
         return True
