@@ -17,5 +17,6 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     processed_event_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True, index=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     user: Mapped["User"] = relationship(back_populates="payments")

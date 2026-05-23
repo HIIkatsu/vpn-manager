@@ -43,21 +43,25 @@ class BillingService:
             return False
 
         payment.status = "processing"
+        payment.processing_started_at = datetime.now(timezone.utc)
         await self.session.flush()
         
         user = await self.users.get_by_id(payment.user_id)
         if user is None:
             payment.status = "pending"
+            payment.processing_started_at = None
             await self.session.flush()
             return False
             
         xray_ok = await self.xray_manager.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
         if not xray_ok:
             payment.status = "pending"
+            payment.processing_started_at = None
             await self.session.flush()
             return False
 
         payment.status = "success"
+        payment.processing_started_at = None
         if event_id:
             payment.processed_event_id = event_id
         user.is_active = True
@@ -77,7 +81,29 @@ class BillingService:
 
         await self.session.flush()
         return True
+
+    async def reclaim_stale_processing(self) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.BILLING_PROCESSING_STALE_AFTER_SECONDS)
+        stale = await self.payments.get_stale_processing(
+            started_before=cutoff,
+            limit=settings.BILLING_PENDING_BATCH_SIZE,
+        )
+        recovered = 0
+        for payment in stale:
+            payment.status = "pending"
+            payment.processing_started_at = None
+            recovered += 1
+        if recovered:
+            await self.session.flush()
+        return recovered
     async def process_pending(self) -> None:
+        reclaimed = await self.reclaim_stale_processing()
+        if reclaimed:
+            self.logger.warning(
+                "Reclaimed stale processing payments",
+                extra=log_context(count=reclaimed, action_source="process_pending"),
+            )
+
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
         pending_payments = await self.payments.get_pending_before(
             older_than=cutoff,
