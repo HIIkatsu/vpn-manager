@@ -6,22 +6,34 @@ from ipaddress import ip_address, ip_network
 from threading import Lock
 
 
-class InMemoryRateLimiter:
+import sqlite3
+import time
+
+class SharedRateLimiter:
     def __init__(self) -> None:
-        self._buckets: dict[str, deque[float]] = defaultdict(deque)
-        self._lock = Lock()
+        self.db_path = "/tmp/vpn_rate_limit.db"
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS hits (key TEXT, timestamp REAL)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_key ON hits(key)")
+        except Exception:
+            pass
 
     def allow(self, key: str, limit: int, window_seconds: int) -> bool:
-        now = datetime.now(timezone.utc).timestamp()
-        with self._lock:
-            bucket = self._buckets[key]
-            edge = now - window_seconds
-            while bucket and bucket[0] <= edge:
-                bucket.popleft()
-            if len(bucket) >= limit:
-                return False
-            bucket.append(now)
+        now = time.time()
+        edge = now - window_seconds
+        try:
+            with sqlite3.connect(self.db_path, timeout=2.0) as conn:
+                conn.execute("DELETE FROM hits WHERE timestamp <= ?", (edge,))
+                cur = conn.execute("SELECT COUNT(*) FROM hits WHERE key = ?", (key,))
+                count = cur.fetchone()[0]
+                if count >= limit:
+                    return False
+                conn.execute("INSERT INTO hits (key, timestamp) VALUES (?, ?)", (key, now))
+                return True
+        except Exception:
             return True
+
 
 
 def sign_subscription_token(user_uuid: str, expires_at: int, secret: str) -> str:

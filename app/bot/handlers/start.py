@@ -24,7 +24,7 @@ WELCOME_TEXT = (
 @router.message(CommandStart())
 async def start_handler(message: Message, session: AsyncSession, user_service: UserService) -> None:
     await user_service.get_or_create(message.from_user.id)
-    await session.commit()
+#     await session.commit() # FIXED: UoW violation
     await message.answer(WELCOME_TEXT, reply_markup=main_keyboard)
     await message.answer("Или используйте inline-меню:", reply_markup=main_inline_keyboard)
 

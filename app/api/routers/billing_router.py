@@ -11,7 +11,7 @@ from app.api.dependencies.common import get_async_session
 from app.bot.core import bot
 from app.core.container import get_billing_service
 from app.core.logging_utils import log_context
-from app.core.security import InMemoryRateLimiter, ip_in_allowlist
+from app.core.security import SharedRateLimiter, ip_in_allowlist
 from app.core.settings import settings
 from app.db.models import User
 from app.services.billing_service import BillingService
@@ -19,14 +19,14 @@ from app.services.yookassa_service import YooKassaService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-rate_limiter = InMemoryRateLimiter()
+rate_limiter = SharedRateLimiter()
 
 
 @router.post("/webhook/yookassa")
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
     yookassa = YooKassaService()
     raw_body = await request.body()
-    if False:
+    if not yookassa.is_valid_webhook_auth(request):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
 
     trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
@@ -82,11 +82,11 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
 
     if not await billing.activate_payment(payment_obj.id, event_id):
-        await session.commit()
+#         await session.commit() # FIXED: UoW violation
         logger.warning("Payment activation returned retry", extra=log_context(payment_id=payment_obj.id, event_id=event_id, action_source="webhook"))
         return {"status": "retry"}
 
-    await session.commit()
+#     await session.commit() # FIXED: UoW violation
 
     try:
         keyboard = InlineKeyboardMarkup(
@@ -104,6 +104,6 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
                 reply_markup=keyboard,
             )
     except Exception as e:
-        print(f"Failed to send message: {e}")
+        logger.error("Failed to send payment confirmation to Telegram", extra=log_context(error=str(e), user_id=payment.user_id, payment_id=payment_obj.id))
 
     return {"status": "ok"}

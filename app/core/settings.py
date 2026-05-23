@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     VLESS_PUBLIC_KEY: str
     VLESS_SHORT_ID: str
     VLESS_FINGERPRINT: str
-    ADMIN_USERNAME: str = "admin"
-    ADMIN_PASSWORD: str = "admin"
+    ADMIN_USERNAME: str
+    ADMIN_PASSWORD: str
 
 
 @lru_cache

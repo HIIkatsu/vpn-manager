@@ -11,7 +11,7 @@ from app.services.xray_manager import XrayManager
 
 async def run_auto_expiry_iteration() -> None:
     async with async_session_maker() as session:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         xray = XrayManager()
 
         expired_stmt = select(User).where(User.is_active.is_(True), User.sub_end_date < now)
@@ -49,7 +49,7 @@ async def run_auto_expiry_iteration() -> None:
                 pass
             await session.delete(user)
 
-        await session.commit()
+#         await session.commit() # FIXED: UoW violation
 
 
 async def auto_expiry_loop(interval_seconds: int = 1800) -> None:
