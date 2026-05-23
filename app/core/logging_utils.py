@@ -24,4 +24,6 @@ def log_context(**kwargs: Any) -> dict[str, Any]:
         "telegram_id": kwargs.get("telegram_id"),
         "event_id": kwargs.get("event_id"),
         "action_source": kwargs.get("action_source"),
+        "attempt": kwargs.get("attempt"),
+        "endpoint": kwargs.get("endpoint"),
     }

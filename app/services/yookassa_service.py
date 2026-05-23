@@ -3,6 +3,7 @@ import base64
 import hmac
 import json
 import uuid
+import logging
 from decimal import Decimal
 from hashlib import sha256
 
@@ -10,6 +11,7 @@ from yookassa import Configuration, Payment as YooPayment
 from yookassa.domain.notification import WebhookNotificationFactory
 
 from app.core.settings import settings
+from app.core.logging_utils import log_context
 from app.db.models import Payment
 from app.db.repositories.payment_repo import PaymentRepository
 
@@ -84,7 +86,12 @@ class YooKassaService:
                 last_error = exc
                 logging.getLogger(__name__).warning(
                     "YooKassa find_one failed",
-                    extra={"payment_id": payment_id, "attempt": attempt + 1},
+                    extra=log_context(
+                        payment_id=payment_id,
+                        action_source="yookassa_find_payment",
+                        attempt=attempt + 1,
+                        endpoint="yookassa.find_one",
+                    ),
                 )
                 if attempt < settings.YOOKASSA_REQUEST_RETRIES:
                     await asyncio.sleep(0.2 * (2 ** attempt))
