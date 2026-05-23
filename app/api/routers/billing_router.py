@@ -26,7 +26,9 @@ rate_limiter = SharedRateLimiter()
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
     yookassa = YooKassaService()
     raw_body = await request.body()
-    if not yookassa.is_valid_webhook_auth(request):
+    authorization = request.headers.get("authorization")
+    signature = request.headers.get("x-content-hmac-sha256")
+    if not yookassa.is_valid_webhook_auth(authorization, signature, raw_body):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
 
     trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
