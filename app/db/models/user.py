@@ -1,3 +1,4 @@
+from sqlalchemy import Column, String
 from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, DateTime, String
@@ -8,6 +9,7 @@ from app.db.models.base import Base
 
 class User(Base):
     __tablename__ = "users"
+    username = Column(String, nullable=True)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)

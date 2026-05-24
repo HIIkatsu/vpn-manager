@@ -53,11 +53,11 @@ def build_stats_text(user, used_bytes: int = 0) -> str:
         f"<i>* 1 TB не является ограничением и нужен лишь для удобного отображения расхода.</i>"
     )
 
-async def _get_user_traffic(user_vless_uuid: str, telegram_id: int, session) -> int:
+async def _get_user_traffic(telegram_id: int, session) -> int:
     try:
         xray = XrayManager()
         stats = await xray.get_live_traffic_stats(reset=True)
-        live_bytes = stats.get(str(user_vless_uuid), 0)
+        live_bytes = stats.get(str(telegram_id), 0)
         return await TrafficStatsService.persist_and_get_total(session, telegram_id, live_bytes)
     except Exception:
         return 0
@@ -69,7 +69,7 @@ async def stats_handler(message: Message, user_service: UserService, session) ->
     if user is None:
         await message.answer("Профиль не найден. Нажмите /start для регистрации.")
         return
-    used_bytes = await _get_user_traffic(user.vless_uuid, user.telegram_id, session)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     await message.answer(build_stats_text(user, used_bytes))
 
 @router.message(Command("help"))
@@ -98,7 +98,7 @@ async def stats_callback(callback: CallbackQuery, user_service: UserService, ses
     if user is None:
         await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
         return
-    used_bytes = await _get_user_traffic(user.vless_uuid, user.telegram_id, session)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     await callback.message.answer(build_stats_text(user, used_bytes))
     await callback.answer()
 
@@ -108,7 +108,7 @@ async def profile_callback(callback: CallbackQuery, user_service: UserService, s
     if user is None:
         await callback.answer("Профиль не найден. Нажмите /start.", show_alert=True)
         return
-    used_bytes = await _get_user_traffic(user.vless_uuid, user.telegram_id, session)
+    used_bytes = await _get_user_traffic(user.telegram_id, session)
     text, keyboard = get_profile_data(user, settings.WEBHOOK_URL_DOMAIN, format_bytes(used_bytes))
     await callback.message.answer(text, reply_markup=keyboard)
     await callback.answer()

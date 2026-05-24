@@ -1,39 +1,33 @@
-import asyncio
+import logging
 import grpc
 import json
-import logging
 import re
-from urllib.parse import quote
+import asyncio
 from uuid import UUID
-
-from app.core.logging_utils import log_context
 from app.core.settings import settings
+from app.core.logging_utils import log_context
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
 from app.grpc.xray_api.common.protocol import user_pb2
 from app.grpc.xray_api.common.serial import typed_message_pb2
 
 logger = logging.getLogger(__name__)
 
-
-def _build_vless_account_message(uuid: str, flow: str = "xtls-rprx-vision", encryption: str = "none") -> bytes:
+def _build_vless_account_message(uuid: str, flow: str = 'xtls-rprx-vision', encryption: str = 'none') -> bytes:
     normalized_uuid = str(UUID(uuid)) if len(uuid) == 32 else uuid
-    payload = b""
-    uuid_bytes = normalized_uuid.encode("utf-8")
-    payload += b"\x0A" + bytes([len(uuid_bytes)]) + uuid_bytes
-    flow_bytes = flow.encode("utf-8")
-    payload += b"\x12" + bytes([len(flow_bytes)]) + flow_bytes
-    enc_bytes = encryption.encode("utf-8")
-    payload += b"\x1A" + bytes([len(enc_bytes)]) + enc_bytes
+    payload = b''
+    uuid_bytes = normalized_uuid.encode('utf-8')
+    payload += b'\x0A' + bytes([len(uuid_bytes)]) + uuid_bytes
+    flow_bytes = flow.encode('utf-8')
+    payload += b'\x12' + bytes([len(flow_bytes)]) + flow_bytes
+    enc_bytes = encryption.encode('utf-8')
+    payload += b'\x1A' + bytes([len(enc_bytes)]) + enc_bytes
     return payload
-
 
 class XrayManager:
     _channel = None
     _inbound_tags = None
     _target = "127.0.0.1:8080"
     _config_lock = asyncio.Lock()
-    _vless_host = None
-    _vless_port = 443
 
     @classmethod
     async def _init_config(cls):
@@ -55,15 +49,8 @@ class XrayManager:
                     tag = ib.get("tag")
                     if tag:
                         cls._inbound_tags.append(tag)
-                    stream_settings = ib.get("streamSettings", {})
-                    reality_settings = stream_settings.get("realitySettings", {})
-                    sni = reality_settings.get("serverName") or settings.VLESS_SNI
-                    cls._vless_host = sni
-                    cls._vless_port = int(ib.get("port") or 443)
             if not cls._inbound_tags:
                 cls._inbound_tags = ["vless"]
-            if not cls._vless_host:
-                cls._vless_host = settings.VLESS_SNI
 
     @staticmethod
     def _read_xray_config() -> dict:
@@ -88,24 +75,6 @@ class XrayManager:
             await cls._channel.close()
             cls._channel = None
 
-    @classmethod
-    def _normalize_uuid(cls, user_uuid: str) -> str:
-        return str(UUID(user_uuid)) if len(user_uuid) == 32 else user_uuid
-
-    def generate_vless_subscription(self, user_uuid: str) -> str:
-        normalized_uuid = self._normalize_uuid(user_uuid)
-        host = self._vless_host or settings.VLESS_SNI
-        port = self._vless_port or 443
-        fp = settings.VLESS_FINGERPRINT
-        pbk = settings.VLESS_PUBLIC_KEY
-        sid = settings.VLESS_SHORT_ID
-        sni = settings.VLESS_SNI
-        label = quote("AnKo VPN")
-        return (
-            f"vless://{normalized_uuid}@{host}:{port}"
-            f"?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni={sni}&sid={sid}&flow=xtls-rprx-vision#{label}"
-        )
-
     async def add_client(self, email: str, uuid: str) -> bool:
         success_overall = True
         try:
@@ -114,10 +83,8 @@ class XrayManager:
             typed_account = typed_message_pb2.TypedMessage(type="xray.proxy.vless.Account", value=account_bytes)
             user = user_pb2.User(email=email, account=typed_account)
             operation = command_pb2.AddUserOperation(user=user)
-            op_typed = typed_message_pb2.TypedMessage(
-                type="xray.app.proxyman.command.AddUserOperation", value=operation.SerializeToString()
-            )
-
+            op_typed = typed_message_pb2.TypedMessage(type="xray.app.proxyman.command.AddUserOperation", value=operation.SerializeToString())
+            
             channel = await self.get_channel()
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
@@ -142,7 +109,7 @@ class XrayManager:
                             ),
                         )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
-                            await asyncio.sleep(0.2 * (2**attempt))
+                            await asyncio.sleep(0.2 * (2 ** attempt))
                     except asyncio.TimeoutError:
                         logger.warning(
                             "Xray add_client rpc timeout",
@@ -154,10 +121,10 @@ class XrayManager:
                             ),
                         )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
-                            await asyncio.sleep(0.2 * (2**attempt))
+                            await asyncio.sleep(0.2 * (2 ** attempt))
                 if not done:
                     success_overall = False
-        except Exception:
+        except Exception as e:
             logger.exception(
                 "Xray add_client failed",
                 extra=log_context(
@@ -174,10 +141,8 @@ class XrayManager:
         try:
             await self.initialize()
             operation = command_pb2.RemoveUserOperation(email=email)
-            op_typed = typed_message_pb2.TypedMessage(
-                type="xray.app.proxyman.command.RemoveUserOperation", value=operation.SerializeToString()
-            )
-
+            op_typed = typed_message_pb2.TypedMessage(type="xray.app.proxyman.command.RemoveUserOperation", value=operation.SerializeToString())
+            
             channel = await self.get_channel()
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             for tag in self.inbound_tags:
@@ -202,7 +167,7 @@ class XrayManager:
                             ),
                         )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
-                            await asyncio.sleep(0.2 * (2**attempt))
+                            await asyncio.sleep(0.2 * (2 ** attempt))
                     except asyncio.TimeoutError:
                         logger.warning(
                             "Xray remove_client rpc timeout",
@@ -214,10 +179,10 @@ class XrayManager:
                             ),
                         )
                         if attempt < settings.XRAY_REQUEST_RETRIES:
-                            await asyncio.sleep(0.2 * (2**attempt))
+                            await asyncio.sleep(0.2 * (2 ** attempt))
                 if not done:
                     success_overall = False
-        except Exception:
+        except Exception as e:
             logger.exception(
                 "Xray remove_client failed",
                 extra=log_context(
@@ -234,12 +199,9 @@ class XrayManager:
             cmd = ["xray", "api", "statsquery", "--server=127.0.0.1:10085", "-pattern", "user>>>"]
             if reset:
                 cmd.append("-reset")
-            proc = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _stderr = await proc.communicate()
-            if proc.returncode != 0:
-                return {}
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0: return {}
             data = json.loads(stdout.decode())
             stats_list = data.get("stat", []) or data.get("stats", [])
             traffic_map = {}

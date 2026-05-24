@@ -9,12 +9,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import cast, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import delete
 from sqlalchemy.orm import joinedload
 
 from app.api.dependencies.common import get_async_session, get_current_admin
 from app.api.utils.subscription import format_bytes
 from app.core.logging_utils import log_context
-from app.db.models import PendingAction, User
+from app.db.models import PendingAction, User, Payment
 from app.services.traffic_stats_service import TrafficStatsService
 from app.services.user_service import UserService
 from app.services.xray_manager import XrayManager
@@ -82,7 +83,7 @@ async def admin_dashboard(
     pending_data = []
     for p in pending_actions:
         tg_id = p.user.telegram_id if p.user else (p.payload.get("telegram_id", "Новый") if p.payload else "Новый")
-        pending_data.append({"action_type": p.action_type, "tg_id": tg_id})
+        pending_data.append({"id": p.id, "action_type": p.action_type, "tg_id": tg_id})
 
     return templates.TemplateResponse(
         request=request,
@@ -189,7 +190,9 @@ async def admin_apply(session: AsyncSession = Depends(get_async_session), admin=
                 p = action.payload
                 user = await user_service.get_by_telegram_id(int(p["telegram_id"]))
                 if not user:
-                    user = await user_service.create_user(telegram_id=int(p["telegram_id"]), vless_uuid=p["vless_uuid"])
+                    user = User(telegram_id=int(p["telegram_id"]), vless_uuid=p["vless_uuid"])
+                    session.add(user)
+                    await session.flush()
                 success = await xray.add_client(email=str(user.telegram_id), uuid=str(user.vless_uuid))
             elif action.action_type in ("toggle_disable", "toggle_enable", "delete"):
                 user = await session.get(User, action.user_id)
@@ -198,7 +201,10 @@ async def admin_apply(session: AsyncSession = Depends(get_async_session), admin=
                         success = await xray.remove_client(email=str(user.telegram_id))
                     else:
                         success = await xray.add_client(email=str(user.telegram_id), uuid=str(user.vless_uuid))
-                    if action.action_type == "delete" and success:
+                    if action.action_type == "delete":
+                        # Жесткое удаление связанных данных перед удалением юзера (защита от IntegrityError)
+                        await session.execute(delete(Payment).where(Payment.user_id == user.id))
+                        await session.execute(delete(PendingAction).where(PendingAction.user_id == user.id).where(PendingAction.id != action.id))
                         await session.delete(user)
             if success or action.action_type == "delete":
                 await session.delete(action)
@@ -209,6 +215,34 @@ async def admin_apply(session: AsyncSession = Depends(get_async_session), admin=
             )
     return RedirectResponse(url="/admin", status_code=303)
 
+
+
+@router.post("/admin/user/set_date")
+async def admin_user_set_date(
+    user_id: int = Form(...),
+    end_date: str = Form(...),
+    session: AsyncSession = Depends(get_async_session),
+    admin=Depends(get_current_admin)
+):
+    user = await session.get(User, user_id)
+    if user and end_date:
+        from datetime import datetime, timezone
+        # Парсим дату из HTML5 инпута (YYYY-MM-DD) и делаем её UTC-aware
+        parsed_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        user.sub_end_date = parsed_date
+        user.is_active = True
+    return RedirectResponse(url="/admin", status_code=303)
+
+@router.post("/admin/pending/cancel")
+async def admin_pending_cancel(
+    action_id: int = Form(...),
+    session: AsyncSession = Depends(get_async_session),
+    admin=Depends(get_current_admin)
+):
+    action = await session.get(PendingAction, action_id)
+    if action:
+        await session.delete(action)
+    return RedirectResponse(url="/admin", status_code=303)
 
 @router.get("/admin/logout")
 async def admin_logout():

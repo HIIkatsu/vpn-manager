@@ -1,125 +1,193 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin 2.0 | VPN Manager</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnKo VPN | Управление</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        function copyUUID(val) {
+            navigator.clipboard.writeText(val).then(() => alert('UUID скопирован!'));
+        }
+        function copySubLink(uuid) {
+            const link = 'https://' + window.location.hostname + '/webhook/sub/' + uuid;
+            navigator.clipboard.writeText(link).then(() => alert('Ссылка на подписку скопирована!'));
+        }
+    </script>
 </head>
-<body class="bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 text-slate-100 min-h-screen">
-  <div class="max-w-7xl mx-auto px-4 py-8">
-    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-      <div>
-        <h1 class="text-4xl md:text-5xl font-black tracking-tight">Админка 2.0</h1>
-        <p class="text-slate-400 mt-2">Современная панель управления пользователями VPN</p>
-      </div>
-      <a href="/admin/logout" class="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-4 py-2 hover:bg-slate-800 transition">
-        <i class="fa-solid fa-right-from-bracket"></i> Выход
-      </a>
-    </header>
+<body class="bg-slate-900 text-slate-200 font-sans antialiased min-h-screen flex flex-col">
+    <nav class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center shadow-md">
+        <h1 class="text-2xl font-black text-white tracking-tight"><i class="fa-solid fa-shield-halved text-blue-500 mr-2"></i>AnKo VPN</h1>
+        <a href="/admin/logout" class="text-slate-400 hover:text-rose-400 transition font-medium"><i class="fa-solid fa-right-from-bracket mr-1"></i> Выход</a>
+    </nav>
 
-    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
-        <p class="text-slate-400 text-sm">Всего пользователей</p><p class="text-3xl font-extrabold mt-2">{{ total_users }}</p>
-      </div>
-      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
-        <p class="text-slate-400 text-sm">Активных</p><p class="text-3xl font-extrabold mt-2 text-emerald-400">{{ active_users }}</p>
-      </div>
-      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
-        <p class="text-slate-400 text-sm">Общий трафик</p><p class="text-3xl font-extrabold mt-2 text-blue-300">{{ total_traffic }}</p>
-      </div>
-      <div class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
-        <p class="text-slate-400 text-sm">Pending Actions</p><p class="text-3xl font-extrabold mt-2 text-amber-400">{{ pending|length }}</p>
-      </div>
-    </section>
-
-    <section class="rounded-2xl bg-slate-900/70 border border-slate-700 p-4 shadow-xl mb-6">
-      <form method="get" action="/admin" class="flex flex-col sm:flex-row gap-3">
-        <input type="text" name="q" value="{{ query }}" placeholder="Поиск по Telegram ID..." class="flex-1 rounded-xl bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <button type="submit" class="rounded-xl bg-blue-600 hover:bg-blue-500 px-5 py-2 font-semibold"><i class="fa-solid fa-magnifying-glass mr-2"></i>Найти</button>
-      </form>
-    </section>
-
-    <section class="space-y-4">
-      {% for u in users %}
-      <article class="rounded-2xl bg-slate-900/70 border border-slate-700 p-5 shadow-xl">
-        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div class="space-y-2">
-            <div class="text-xl font-bold">ID {{ u.telegram_id }}</div>
-            <div class="text-slate-400 text-sm">UUID: <span class="font-mono">{{ u.masked_uuid }}</span>
-              <button type="button" onclick="copyUUID('{{ u.vless_uuid }}')" class="ml-2 text-blue-300 hover:text-blue-200" title="Копировать UUID"><i class="fa-regular fa-copy"></i></button>
+    <div class="max-w-7xl mx-auto px-4 py-8 w-full flex-grow">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-1 font-medium">Всего пользователей</div>
+                <div class="text-4xl font-bold text-white">{{ total_users }}</div>
             </div>
-            <div>
-              {% if u.is_active %}
-                <span class="inline-flex items-center rounded-full bg-emerald-500/20 text-emerald-300 px-3 py-1 text-xs font-semibold">Активен</span>
-              {% else %}
-                <span class="inline-flex items-center rounded-full bg-rose-500/20 text-rose-300 px-3 py-1 text-xs font-semibold">Отключен</span>
-              {% endif %}
-              <span class="ml-2 text-sm text-slate-300">
-                {% if u.days_left is none %}
-                  {{ u.sub_end_date }}
-                {% elif u.days_left > 0 %}
-                  {{ u.sub_end_date }} (Осталось {{ u.days_left }} дней)
-                {% else %}
-                  {{ u.sub_end_date }} (Истекла)
-                {% endif %}
-              </span>
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-1 font-medium">Активных</div>
+                <div class="text-4xl font-bold text-emerald-400">{{ users|selectattr("is_active")|list|length }}</div>
             </div>
-          </div>
-
-          <div class="min-w-[280px]">
-            <div class="flex items-center justify-between text-xs text-slate-400 mb-1"><span>Трафик</span><span>{{ u.traffic }} / 1 TB</span></div>
-            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-blue-500 to-emerald-400" style="width: {{ u.traffic_percent }}%"></div></div>
-          </div>
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-lg">
+                <div class="text-slate-400 text-sm mb-1 font-medium">Общий трафик</div>
+                <div class="text-4xl font-bold text-blue-400">{{ total_traffic }}</div>
+            </div>
+            <div class="bg-slate-800 rounded-2xl p-5 border border-slate-700 shadow-lg relative overflow-hidden">
+                <div class="text-slate-400 text-sm mb-1 font-medium">Изменений в очереди</div>
+                <div class="text-4xl font-bold text-amber-400">{{ pending|length }}</div>
+            </div>
         </div>
 
-        <div class="mt-4 flex flex-wrap items-center gap-2">
-          <form method="post" action="/admin/user/toggle">
-            <input type="hidden" name="user_id" value="{{ u.id }}" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Вкл/Выкл"><i class="fa-solid {% if u.is_active %}fa-pause{% else %}fa-play{% endif %}"></i></button>
-          </form>
-
-          <form method="post" action="/admin/user/add_days">
-            <input type="hidden" name="user_id" value="{{ u.id }}" /><input type="hidden" name="days" value="30" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="+1 месяц">+1M</button>
-          </form>
-
-          <form method="post" action="/admin/user/add_days">
-            <input type="hidden" name="user_id" value="{{ u.id }}" /><input type="hidden" name="days" value="90" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="+3 месяца">+3M</button>
-          </form>
-
-          <form method="post" action="/admin/user/set_infinite">
-            <input type="hidden" name="user_id" value="{{ u.id }}" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Безлимит"><i class="fa-solid fa-infinity"></i></button>
-          </form>
-
-          <form method="post" action="/admin/user/add_days" class="flex items-center gap-2">
-            <input type="hidden" name="user_id" value="{{ u.id }}" />
-            <input type="number" min="1" name="days" placeholder="Дней" class="w-20 rounded-xl bg-slate-800 border border-slate-700 px-2 py-2 text-sm" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Указать срок"><i class="fa-regular fa-calendar"></i></button>
-          </form>
-
-          <form method="post" action="/admin/user/reset_traffic">
-            <input type="hidden" name="user_id" value="{{ u.id }}" />
-            <button class="rounded-xl border border-slate-700 px-3 py-2 hover:bg-slate-800" title="Обнулить трафик"><i class="fa-solid fa-broom"></i></button>
-          </form>
-
-          <form method="post" action="/admin/user/delete" class="ml-auto" onsubmit="return confirm('Удалить пользователя {{ u.telegram_id }}?')">
-            <input type="hidden" name="user_id" value="{{ u.id }}" />
-            <button class="rounded-xl border border-rose-700/70 text-rose-300 px-3 py-2 hover:bg-rose-900/30" title="Удалить"><i class="fa-solid fa-trash"></i></button>
-          </form>
+        {% if pending|length > 0 %}
+        <div class="bg-slate-800 rounded-2xl p-4 border border-amber-500/50 shadow-lg mb-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 border-b border-slate-700 pb-3">
+                <h3 class="text-amber-400 font-bold"><i class="fa-solid fa-list-check"></i> Ожидают применения в Xray</h3>
+                <form method="post" action="/admin/apply" class="m-0 w-full sm:w-auto">
+                    <button type="submit" class="w-full sm:w-auto justify-center bg-amber-500 hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-amber-500/20">
+                        <i class="fa-solid fa-check-double"></i> Применить всё
+                    </button>
+                </form>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {% for p in pending %}
+                <div class="bg-slate-900 border border-slate-700 rounded-xl p-3 flex justify-between items-center">
+                    <div>
+                        <div class="text-xs text-slate-400">Пользователь: <span class="font-mono text-white">{{ p.tg_id }}</span></div>
+                        <div class="font-bold text-sm mt-1">
+                            {% if p.action_type == 'add' %}<span class="text-emerald-400"><i class="fa-solid fa-plus"></i> Создание</span>
+                            {% elif p.action_type == 'toggle_enable' %}<span class="text-blue-400"><i class="fa-solid fa-play"></i> Включение</span>
+                            {% elif p.action_type == 'toggle_disable' %}<span class="text-amber-400"><i class="fa-solid fa-pause"></i> Отключение</span>
+                            {% elif p.action_type == 'delete' %}<span class="text-rose-400"><i class="fa-solid fa-trash"></i> Удаление</span>
+                            {% else %}{{ p.action_type }}{% endif %}
+                        </div>
+                    </div>
+                    <form method="post" action="/admin/pending/cancel" class="m-0">
+                        <input type="hidden" name="action_id" value="{{ p.id }}">
+                        <button type="submit" class="text-rose-400 hover:text-rose-300 w-8 h-8 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 flex items-center justify-center transition" title="Отменить изменение">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
         </div>
-      </article>
-      {% endfor %}
-    </section>
-  </div>
+        {% endif %}
 
-<script>
-function copyUUID(value) {
-  navigator.clipboard.writeText(value).then(() => alert('UUID скопирован'));
-}
-</script>
+        <div class="bg-slate-800 rounded-2xl p-4 border border-slate-700 shadow-lg flex flex-col md:flex-row gap-4 justify-between items-center mb-8">
+            <form method="get" action="/admin" class="w-full md:w-1/2 flex gap-2 m-0">
+                <input type="text" name="q" value="{{ query }}" placeholder="Поиск по Telegram ID..." class="w-full bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-white transition">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded-xl font-bold transition shadow-lg shadow-blue-500/20"><i class="fa-solid fa-magnifying-glass md:hidden"></i><span class="hidden md:inline">Найти</span></button>
+            </form>
+            <form method="post" action="/admin/user/add" class="w-full md:w-auto flex gap-2 m-0">
+                <input type="text" name="telegram_id" placeholder="Telegram ID клиента" required class="w-full md:w-64 bg-slate-900 border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-white transition">
+                <button type="submit" class="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl font-bold transition shadow-lg shadow-emerald-500/20 whitespace-nowrap"><i class="fa-solid fa-plus mr-2"></i>Добавить</button>
+            </form>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {% for u in users %}
+            <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl hover:border-slate-500 transition flex flex-col justify-between group">
+                <div>
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <div class="text-2xl font-black text-white mb-2 truncate max-w-[200px]" title="{{ u.username or u.telegram_id }}">
+                                {% if u.username %}
+                                    <a href="https://t.me/{{ u.username }}" target="_blank" class="hover:text-emerald-400 transition">@{{ u.username }}</a>
+                                    <div class="text-xs text-slate-500 font-normal mt-1">ID: {{ u.telegram_id }}</div>
+                                {% else %}
+                                    ID {{ u.telegram_id }}
+                                {% endif %}
+                            </div>
+                            
+                            <div class="flex flex-col gap-1 items-start">
+                                <div class="text-slate-400 text-xs font-mono bg-slate-900 px-2 py-1 rounded inline-flex items-center gap-2 cursor-pointer hover:text-blue-400 transition" onclick="copyUUID('{{ u.vless_uuid }}')" title="Копировать UUID">
+                                    {{ u.vless_uuid[:8] }}...{{ u.vless_uuid[-4:] }} <i class="fa-regular fa-copy"></i>
+                                </div>
+                                <div class="text-slate-400 text-xs font-mono bg-slate-900 px-2 py-1 rounded inline-flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition" onclick="copySubLink('{{ u.vless_uuid }}')" title="Скопировать ссылку на подписку">
+                                    <i class="fa-solid fa-link"></i> Скопировать подписку
+                                </div>
+                            </div>
+                        </div>
+                        {% if u.is_active %}
+                        <span class="bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-lg text-xs font-bold border border-emerald-500/20 flex items-center gap-1"><i class="fa-solid fa-circle text-[8px]"></i> Активен</span>
+                        {% else %}
+                        <span class="bg-rose-500/10 text-rose-400 px-3 py-1 rounded-lg text-xs font-bold border border-rose-500/20 flex items-center gap-1"><i class="fa-regular fa-circle text-[8px]"></i> Отключен</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="text-sm text-slate-300 mb-5 flex items-center gap-2 bg-slate-900/50 p-2 rounded-lg border border-slate-700/50">
+                        <i class="fa-regular fa-calendar-check text-blue-400"></i> Срок: <span class="font-bold text-white ml-auto">{{ u.sub_end_date }}</span>
+                    </div>
+
+                    <div class="mb-6">
+                        <div class="flex justify-between text-xs text-slate-400 mb-2 font-medium">
+                            <span class="flex items-center gap-1"><i class="fa-solid fa-chart-pie"></i> Трафик</span>
+                            <span>{{ u.traffic }} / 1 TB</span>
+                        </div>
+                        <div class="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                            <div class="bg-gradient-to-r from-blue-500 to-emerald-400 h-2.5 rounded-full" style="width: {{ u.traffic_percent }}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900 -mx-6 -mb-6 p-4 rounded-b-2xl border-t border-slate-700 flex flex-col gap-3">
+                    <div class="flex flex-wrap gap-2 justify-between items-center">
+                        <div class="flex gap-2">
+                            <form method="post" action="/admin/user/toggle" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="w-10 h-10 rounded-xl bg-slate-800 border border-slate-600 hover:bg-slate-700 text-white flex items-center justify-center transition shadow-sm" title="Вкл/Выкл">
+                                    {% if u.is_active %}<i class="fa-solid fa-pause"></i>{% else %}<i class="fa-solid fa-play text-emerald-400"></i>{% endif %}
+                                </button>
+                            </form>
+                            <form method="post" action="/admin/user/add_days" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <input type="hidden" name="days" value="30">
+                                <button type="submit" class="h-10 px-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white font-bold text-sm transition shadow-sm">+1M</button>
+                            </form>
+                            <form method="post" action="/admin/user/add_days" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <input type="hidden" name="days" value="90">
+                                <button type="submit" class="h-10 px-3 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white font-bold text-sm transition shadow-sm">+3M</button>
+                            </form>
+                            <form method="post" action="/admin/user/set_infinite" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-600 hover:text-white flex items-center justify-center transition shadow-sm" title="Безлимит">
+                                    <i class="fa-solid fa-infinity"></i>
+                                </button>
+                            </form>
+                        </div>
+                        <div class="flex gap-2">
+                            <form method="post" action="/admin/user/reset_traffic" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500 hover:text-slate-900 flex items-center justify-center transition shadow-sm" title="Сбросить трафик">
+                                    <i class="fa-solid fa-broom"></i>
+                                </button>
+                            </form>
+                            <form method="post" action="/admin/user/delete" onsubmit="return confirm('Безвозвратно удалить пользователя {{ u.telegram_id }}?');" class="m-0">
+                                <input type="hidden" name="user_id" value="{{ u.id }}">
+                                <button type="submit" class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-600 hover:text-white flex items-center justify-center transition shadow-sm" title="Удалить аккаунт">
+                                    <i class="fa-solid fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center gap-2 border-t border-slate-700/50 pt-3 mt-1">
+                        <span class="text-xs text-slate-400 font-medium whitespace-nowrap">Точная дата:</span>
+                        <form method="post" action="/admin/user/set_date" class="m-0 flex gap-2 w-full">
+                           <input type="hidden" name="user_id" value="{{ u.id }}">
+                           <input type="date" name="end_date" required class="h-9 bg-slate-800 border border-slate-600 rounded-lg px-2 text-white text-sm focus:outline-none focus:border-blue-500 w-full cursor-pointer" title="Выбрать дату">
+                           <button type="submit" class="h-9 px-4 rounded-lg bg-slate-700 text-slate-300 border border-slate-600 hover:bg-emerald-600 hover:text-white hover:border-emerald-500 font-bold text-sm transition shadow-sm">Задать</button>
+                       </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 </body>
 </html>

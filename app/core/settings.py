@@ -4,7 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    YOOKASSA_WEBHOOK_SHARED_TOKEN: str | None = None
+    YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY: bool = True
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     DEBUG: bool = False
     SECRET_PREFIX: str
