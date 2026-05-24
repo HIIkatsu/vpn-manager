@@ -7,8 +7,13 @@ import logging
 from decimal import Decimal
 from hashlib import sha256
 
-from yookassa import Configuration, Payment as YooPayment
-from yookassa.domain.notification import WebhookNotificationFactory
+try:
+    from yookassa import Configuration, Payment as YooPayment
+    from yookassa.domain.notification import WebhookNotificationFactory
+except Exception:  # pragma: no cover - optional dependency in tests
+    Configuration = None
+    YooPayment = None
+    WebhookNotificationFactory = None
 
 from app.core.settings import settings
 from app.core.logging_utils import log_context
@@ -18,8 +23,9 @@ from app.db.repositories.payment_repo import PaymentRepository
 
 class YooKassaService:
     def __init__(self) -> None:
-        Configuration.account_id = settings.YOOKASSA_SHOP_ID
-        Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
+        if Configuration is not None:
+            Configuration.account_id = settings.YOOKASSA_SHOP_ID
+            Configuration.secret_key = settings.YOOKASSA_SECRET_KEY
 
     def expected_basic_auth(self) -> str:
         token = f"{settings.YOOKASSA_SHOP_ID}:{settings.YOOKASSA_SECRET_KEY}".encode("utf-8")
@@ -69,12 +75,16 @@ class YooKassaService:
         return self._is_valid_shared_token(shared_token)
 
     def parse_notification(self, payload: dict):
+        if WebhookNotificationFactory is None:
+            return None
         try:
             return WebhookNotificationFactory().create(payload)
         except Exception:
             return None
 
     async def fetch_remote_payment(self, payment_id: str):
+        if YooPayment is None:
+            raise RuntimeError("yookassa SDK is not installed")
         last_error: Exception | None = None
         for attempt in range(settings.YOOKASSA_REQUEST_RETRIES + 1):
             try:
@@ -98,6 +108,8 @@ class YooKassaService:
         raise RuntimeError(f"YooKassa find_one failed after retries for payment {payment_id}") from last_error
 
     async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float) -> str:
+        if YooPayment is None:
+            raise RuntimeError("yookassa SDK is not installed")
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},
             "capture": True,
