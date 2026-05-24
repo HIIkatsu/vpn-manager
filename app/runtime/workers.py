@@ -6,72 +6,129 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 from app.bot.core import bot
+from app.core.logging_utils import log_context
 from app.db.database import async_session_maker
 from app.db.models import OutboxEvent, User
 from app.db.repositories.outbox_repo import OutboxRepository
+from app.services.transaction import session_scope
 from app.services.xray_manager import XrayManager
-from app.core.logging_utils import log_context
 
 logger = logging.getLogger(__name__)
 
 
 async def run_outbox_delivery_iteration(batch_size: int = 100) -> tuple[int, int]:
-    async with async_session_maker() as session:
-        repo = OutboxRepository(session)
-        xray = XrayManager()
-        delivered = 0
-        failed = 0
+    """Transaction boundaries:
+    1) lock and snapshot pending outbox events in a short transaction;
+    2) call external Xray API outside transaction;
+    3) persist results in a short transaction.
+    """
+    xray = XrayManager()
+    delivered = 0
+    failed = 0
 
+    async with session_scope(async_session_maker) as session:
+        repo = OutboxRepository(session)
         events = await repo.get_pending_batch(limit=batch_size)
-        for event in events:
-            try:
-                payload = json.loads(event.payload_json)
-                if event.event_type == "xray.add_client":
-                    ok = await xray.add_client(email=str(payload["telegram_id"]), uuid=payload["uuid"])
-                else:
-                    ok = False
-                if ok:
-                    repo.mark_processed(event)
-                    delivered += 1
-                else:
-                    repo.mark_failed(event, "xray call returned false")
-                    failed += 1
-            except Exception as exc:
-                repo.mark_failed(event, str(exc))
+        event_snapshots = [
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "payload_json": event.payload_json,
+            }
+            for event in events
+        ]
+
+    outcomes: dict[int, tuple[bool, str | None]] = {}
+    for event in event_snapshots:
+        try:
+            payload = json.loads(event["payload_json"])
+            if event["event_type"] == "xray.add_client":
+                ok = await xray.add_client(email=str(payload["telegram_id"]), uuid=payload["uuid"])
+            else:
+                ok = False
+            outcomes[event["id"]] = (ok, None if ok else "xray call returned false")
+        except Exception as exc:
+            outcomes[event["id"]] = (False, str(exc))
+
+    async with session_scope(async_session_maker) as session:
+        repo = OutboxRepository(session)
+        db_events = (
+            await session.execute(select(OutboxEvent).where(OutboxEvent.id.in_(list(outcomes.keys()))))
+        ).scalars().all()
+        by_id = {event.id: event for event in db_events}
+
+        for event_id, (ok, err) in outcomes.items():
+            event = by_id.get(event_id)
+            if event is None:
+                continue
+            if ok:
+                repo.mark_processed(event)
+                delivered += 1
+            else:
+                repo.mark_failed(event, err or "unknown error")
                 failed += 1
 
-        await session.commit()
-        return delivered, failed
+    return delivered, failed
 
 
 async def run_xray_reconciliation_iteration() -> tuple[int, int]:
-    async with async_session_maker() as session:
-        xray = XrayManager()
-        now = datetime.now(timezone.utc)
-        activated = 0
-        deactivated = 0
+    """Transaction boundaries:
+    1) fetch candidate users in short transaction;
+    2) external Xray calls outside transaction;
+    3) persist status changes in short transaction.
+    """
+    xray = XrayManager()
+    now = datetime.now(timezone.utc)
+    activated = 0
+    deactivated = 0
 
-        should_be_active = (await session.execute(select(User).where(User.sub_end_date.is_not(None), User.sub_end_date > now))).scalars().all()
-        should_be_inactive = (await session.execute(select(User).where((User.sub_end_date.is_(None)) | (User.sub_end_date <= now)))).scalars().all()
+    async with session_scope(async_session_maker) as session:
+        should_be_active = (
+            await session.execute(select(User).where(User.sub_end_date.is_not(None), User.sub_end_date > now))
+        ).scalars().all()
+        should_be_inactive = (
+            await session.execute(select(User).where((User.sub_end_date.is_(None)) | (User.sub_end_date <= now)))
+        ).scalars().all()
+        active_targets = [
+            {"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid, "is_active": user.is_active}
+            for user in should_be_active
+        ]
+        inactive_targets = [
+            {"id": user.id, "telegram_id": user.telegram_id, "is_active": user.is_active}
+            for user in should_be_inactive
+        ]
 
-        for user in should_be_active:
-            ok = await xray.add_client(email=str(user.telegram_id), uuid=user.vless_uuid)
-            if ok and not user.is_active:
+    activate_ids: list[int] = []
+    deactivate_ids: list[int] = []
+
+    for user in active_targets:
+        ok = await xray.add_client(email=str(user["telegram_id"]), uuid=user["vless_uuid"])
+        if ok and not user["is_active"]:
+            activate_ids.append(user["id"])
+
+    for user in inactive_targets:
+        ok = await xray.remove_client(email=str(user["telegram_id"]))
+        if ok and user["is_active"]:
+            deactivate_ids.append(user["id"])
+
+    async with session_scope(async_session_maker) as session:
+        if activate_ids:
+            to_activate = (await session.execute(select(User).where(User.id.in_(activate_ids)))).scalars().all()
+            for user in to_activate:
                 user.is_active = True
-                activated += 1
+            activated = len(to_activate)
 
-        for user in should_be_inactive:
-            ok = await xray.remove_client(email=str(user.telegram_id))
-            if ok and user.is_active:
+        if deactivate_ids:
+            to_deactivate = (await session.execute(select(User).where(User.id.in_(deactivate_ids)))).scalars().all()
+            for user in to_deactivate:
                 user.is_active = False
-                deactivated += 1
+            deactivated = len(to_deactivate)
 
-        await session.commit()
-        return activated, deactivated
+    return activated, deactivated
 
 
 async def run_auto_expiry_iteration() -> None:
-    async with async_session_maker() as session:
+    async with session_scope(async_session_maker) as session:
         now = datetime.now(timezone.utc)
         xray = XrayManager()
 
