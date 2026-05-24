@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import asyncio
+from typing import TYPE_CHECKING
 
-from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.security import DistributedLock
 from app.core.logging_utils import log_context
 from app.core.settings import settings
 from app.db.repositories.payment_repo import PaymentRepository
@@ -11,6 +13,9 @@ from app.db.repositories.user_repo import UserRepository
 from app.services.xray_manager import XrayManager
 from app.services.yookassa_service import YooKassaService
 from app.db.repositories.outbox_repo import OutboxRepository
+
+if TYPE_CHECKING:
+    from aiogram import Bot
 
 class BillingService:
     def __init__(
@@ -20,7 +25,7 @@ class BillingService:
         payments: PaymentRepository,
         xray_manager: XrayManager,
         yookassa_service: YooKassaService,
-        notifier: Bot,
+        notifier: "Bot",
         outbox: OutboxRepository | None = None,
     ):
         self.session = session
@@ -31,6 +36,7 @@ class BillingService:
         self.notifier = notifier
         self.outbox = outbox or OutboxRepository(session)
         self.logger = logging.getLogger(__name__)
+        self._processing_lock = DistributedLock()
 
     async def create_subscription_payment(self, user_id: int, amount: float) -> str:
         url = await self.yookassa_service.create_payment(self.payments, user_id, amount)
@@ -109,6 +115,13 @@ class BillingService:
             await self.session.flush()
         return recovered
     async def process_pending(self) -> None:
+        if not self._processing_lock.acquire("billing:process_pending", ttl_seconds=60):
+            self.logger.info(
+                "Skipped process_pending due to active distributed lock",
+                extra=log_context(action_source="process_pending", endpoint="distributed_lock"),
+            )
+            return
+
         reclaimed = await self.reclaim_stale_processing()
         if reclaimed:
             self.logger.warning(
@@ -124,7 +137,10 @@ class BillingService:
         payment_ids = [p.payment_id for p in pending_payments]
 
         for pid in payment_ids:
-            remote_payment = await self.yookassa_service.fetch_remote_payment(pid)
+            remote_payment = await asyncio.wait_for(
+                self.yookassa_service.fetch_remote_payment(pid),
+                timeout=settings.YOOKASSA_REQUEST_TIMEOUT_SECONDS * (settings.YOOKASSA_REQUEST_RETRIES + 2),
+            )
             if remote_payment.status == "succeeded":
                 activated = await self.activate_payment(pid)
                 if not activated:

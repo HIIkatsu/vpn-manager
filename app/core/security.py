@@ -82,6 +82,30 @@ class WebhookReplayGuard:
             return False
 
 
+class DistributedLock:
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._memory_locks: dict[str, float] = {}
+        self._redis = None
+        if settings.REDIS_URL and Redis is not None:
+            self._redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+
+    def acquire(self, key: str, ttl_seconds: int) -> bool:
+        if self._redis is not None:
+            try:
+                return bool(self._redis.set(f"lock:{key}", "1", ex=ttl_seconds, nx=True))
+            except RedisError:
+                return False
+
+        now = time.time()
+        with self._lock:
+            exp = self._memory_locks.get(key)
+            if exp is not None and exp > now:
+                return False
+            self._memory_locks[key] = now + ttl_seconds
+            return True
+
+
 def sign_subscription_token(user_uuid: str, expires_at: int, secret: str) -> str:
     payload = f"{user_uuid}:{expires_at}"
     return hmac.new(secret.encode(), payload.encode(), sha256).hexdigest()
