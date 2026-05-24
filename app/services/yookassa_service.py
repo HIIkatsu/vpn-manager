@@ -1,11 +1,9 @@
 import asyncio
 import base64
 import hmac
-import json
 import uuid
 import logging
 from decimal import Decimal
-from hashlib import sha256
 
 try:
     from yookassa import Configuration, Payment as YooPayment
@@ -37,42 +35,22 @@ class YooKassaService:
             and hmac.compare_digest(authorization_header.strip(), self.expected_basic_auth())
         )
 
-    def _is_valid_shared_token(self, token: str | None) -> bool:
-        expected = settings.YOOKASSA_WEBHOOK_SHARED_TOKEN
+    def _is_valid_webhook_secret(self, token: str | None) -> bool:
+        expected = settings.YOOKASSA_WEBHOOK_SECRET
         if not expected or not token:
             return False
         return hmac.compare_digest(token.strip(), expected)
 
-    def _canonical_webhook_payload(self, payload: dict) -> bytes:
-        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-
-    def _expected_hmac_signature(self, payload: dict) -> str:
-        secret = settings.YOOKASSA_SECRET_KEY.encode("utf-8")
-        canonical = self._canonical_webhook_payload(payload)
-        return hmac.new(secret, canonical, sha256).hexdigest()
-
-    def _is_valid_hmac_auth(self, signature_header: str | None, payload: dict) -> bool:
-        if not signature_header:
-            return False
-        candidate = signature_header.strip().lower()
-        expected = self._expected_hmac_signature(payload)
-        return hmac.compare_digest(candidate, expected)
-
     def is_valid_webhook_auth(
         self,
         authorization_header: str | None,
-        signature_header: str | None,
-        shared_token: str | None,
-        payload: dict,
+        webhook_secret_header: str | None,
     ) -> bool:
         # 1) Native YooKassa Basic Auth (best when header is preserved)
         if self._is_valid_basic_auth(authorization_header):
             return True
-        # 2) Optional HMAC mode when upstream adds signature header
-        if self._is_valid_hmac_auth(signature_header, payload):
-            return True
-        # 3) Fallback hardened shared secret header, still constant-time
-        return self._is_valid_shared_token(shared_token)
+        # 2) Hardened dedicated webhook secret header, constant-time compare
+        return self._is_valid_webhook_secret(webhook_secret_header)
 
     def parse_notification(self, payload: dict):
         if WebhookNotificationFactory is None:

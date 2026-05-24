@@ -34,10 +34,9 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     auth_header = request.headers.get("authorization")
-    signature_header = request.headers.get("x-content-hmac-sha256")
-    shared_token = request.headers.get("x-yookassa-webhook-token")
+    webhook_secret_header = request.headers.get("x-yookassa-webhook-secret")
 
-    if not yookassa.is_valid_webhook_auth(auth_header, signature_header, shared_token, payload):
+    if not yookassa.is_valid_webhook_auth(auth_header, webhook_secret_header):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook authorization")
 
     trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
@@ -61,6 +60,8 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
     allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
+    if not allowlist:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Webhook IP allowlist is not configured")
     if not ip_in_allowlist(client_ip, allowlist):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
 
