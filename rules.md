@@ -1,153 +1,92 @@
-# AnKo VPN Manager (v2) — Production Audit Report
+# AnKo VPN Manager v2 — Production Readiness Rules (3–4 Steps)
 
-## Executive Summary
+## Шаг 1 — Транзакционная дисциплина и Unit of Work
+### Ошибки
+- Нарушение единого паттерна транзакций: в воркерах используются прямые `async_session_maker()` и ручные `session.commit()` вместо `session_scope`.
+- Долгие операции выполняются внутри открытых DB-сессий/транзакций.
 
-**Итог:** проект в текущем состоянии **не готов к production (NO-GO)**.
+### Лучшее решение
+- Использовать **только** `session_scope` для всех write-операций.
+- Разделить обработку на фазы:
+  1) короткая DB-транзакция (захват/маркировка задач),
+  2) внешние вызовы (Xray/YooKassa) **вне** транзакции,
+  3) короткая транзакция фиксации результата.
+- Для конкурентной обработки батчей использовать `SELECT ... FOR UPDATE SKIP LOCKED`.
 
-Ключевые риски:
-1. Поломанный Unit of Work: `session_scope` не фиксирует транзакции.
-2. Некорректный вызов webhook-аутентификации YooKassa (ошибка интерфейса).
-3. Блокирующий rate limiter (SQLite) внутри async webhook-пути.
-4. Неатомарный биллинг-поток: внешний side-effect (Xray) до гарантированного сохранения состояния в БД.
-5. «Слепое» логирование в нескольких критичных фоновых/админских участках.
+### Четкие критерии
+- В проекте отсутствуют ручные `session.commit()` / `session.rollback()` вне `session_scope`.
+- Время удержания транзакции не включает сетевые gRPC/HTTP вызовы.
+- Нет зависших соединений/роста пула под нагрузкой (подтверждается нагрузочным тестом).
 
----
-
-## Critical Findings
-
-### C1. Unit of Work нарушен: отсутствуют `commit/rollback` в `session_scope`
-- **Где:** `app/services/transaction.py`
-- **Симптом:** контекст-менеджер отдаёт сессию, но не делает `commit()` при успехе и `rollback()` при ошибке.
-- **Production-impact:**
-  - Изменения могут не попасть в БД, особенно в путях, где разработчик рассчитывает на UoW.
-  - Под нагрузкой это даст фантомные «успешные» операции с последующей рассинхронизацией бизнес-логики.
-- **Реальное решение:**
-  - Восстановить строгий UoW-контракт.
-  - Запретить использование альтернативных способов выдачи сессий в DI, которые обходят этот контракт.
-- **Патч (пример):**
-  ```python
-  @asynccontextmanager
-  async def session_scope(session_factory):
-      async with session_factory() as session:
-          try:
-              yield session
-              await session.commit()
-          except Exception:
-              await session.rollback()
-              raise
-  ```
-
-### C2. Webhook auth вызывается с неверными аргументами
-- **Где:** `app/api/routers/billing_router.py` + `app/services/yookassa_service.py`
-- **Симптом:** валидация вызывается как `is_valid_webhook_auth(request)`, хотя ожидает заголовки/тело.
-- **Production-impact:**
-  - Ложные 401/500 на боевых webhook’ах.
-  - Деньги приняты, но подписки не активированы автоматически.
-- **Реальное решение:**
-  - Передавать `Authorization`, `X-...-Signature` и raw body явно.
-  - Добавить интеграционный тест на реальный payload YooKassa.
-- **Патч (пример):**
-  ```python
-  raw_body = await request.body()
-  auth = request.headers.get("authorization")
-  signature = request.headers.get("x-content-hmac-sha256")
-
-  if not yookassa.is_valid_webhook_auth(auth, signature, raw_body):
-      raise HTTPException(status_code=401, detail="Invalid webhook authorization")
-  ```
+### Правила выполнения
+- Запрещено открывать `AsyncSession` напрямую в бизнес-операциях, кроме внутри `session_scope`.
+- Любая функция, модифицирующая БД, должна документировать границы транзакции.
 
 ---
 
-## High Findings
+## Шаг 2 — Concurrency и устойчивость event loop
+### Ошибки
+- Потенциальные длинные циклы с внешними вызовами внутри request-path и фоновых задач.
+- Риск штормов повторной обработки платежей при параллельных пользовательских триггерах.
 
-### H1. Блокирующий SQLite rate limiter в async-контексте
-- **Где:** `app/core/security.py` (`SharedRateLimiter.allow`) вызывается из async webhook.
-- **Production-impact:**
-  - Блокировка event loop.
-  - Рост latency, деградация throughput при всплесках webhook-ов.
-- **Реальное решение:**
-  1. Быстрый mitigation: вынос в `asyncio.to_thread`.
-  2. Правильное решение: Redis-based limiter (atomic INCR/EXPIRE или Lua).
+### Лучшее решение
+- Вынести тяжелые и массовые операции в фоновых воркеров с ограничением конкуренции.
+- Добавить distributed lock (Redis `SET NX EX`) на компенсационные/пакетные платежные процессы.
+- Ввести таймауты, retry c backoff, и circuit-breaker для внешних зависимостей.
 
-### H2. Неатомарность биллинга: Xray side-effect до устойчивого состояния
-- **Где:** `app/services/billing_service.py` (`activate_payment`).
-- **Production-impact:**
-  - Возможен сценарий: клиент уже активирован в Xray, а БД откатилась/не зафиксировалась.
-  - Итог — рассинхрон control-plane и source-of-truth.
-- **Реальное решение:**
-  - Внедрить transactional outbox + worker delivery.
-  - Идемпотентная обработка событий с retry и дедупликацией.
+### Четкие критерии
+- p95/p99 latency API стабильны под целевой нагрузкой.
+- Нет одновременного запуска одного и того же компенсационного процесса.
+- Все внешние вызовы имеют явные timeout/retry политики.
 
-### H3. Потенциально «залипающий» статус `processing` у платежа
-- **Где:** `activate_payment` ставит `processing`, затем вызывает внешние системы.
-- **Production-impact:**
-  - При падении процесса статус может «зависнуть».
-  - Компенсация может не вернуть платеж в корректный финальный статус.
-- **Реальное решение:**
-  - Добавить `processing_started_at` + watchdog/compensation, который reclaims stale processing.
-  - Явная state-machine (pending -> processing -> success/failed).
+### Правила выполнения
+- Любой I/O-вызов должен быть ограничен таймаутом.
+- Любая массовая операция должна быть идемпотентной.
 
 ---
 
-## Medium Findings
+## Шаг 3 — Безопасность webhook/API и shell hardening
+### Ошибки
+- Слабая модель webhook auth: недопустимо опираться на схему, где подпись можно сформировать по секретам, используемым не по назначению.
+- Недостаточный hardening скриптов watchdog (нет `set -euo pipefail`, нет lock, нет анти-флап защиты).
 
-### M1. Обход единообразного UoW через альтернативный session provider
-- **Где:** `app/core/container.py` (`get_async_session` через `async_session_maker()` напрямую).
-- **Impact:** нарушение архитектурной инварианты «все транзакции через session_scope».
-- **Решение:** оставить единственный путь выдачи сессий.
+### Лучшее решение
+- Для webhook оставить только проверяемые и разделенные механизмы:
+  - strict allowlist IP,
+  - отдельный webhook-secret,
+  - optional API verify в YooKassa.
+- Удалить/запретить небезопасные fallback-аутентификации.
+- Усилить shell-скрипты: `set -euo pipefail`, `flock`, `timeout`, rate-limit рестартов.
 
-### M2. Частично неструктурированное логирование в критичных ветках
-- **Где:** `admin_router`/`workers` с `print()` и проглатыванием ошибок.
-- **Impact:** сложный postmortem, слабая трассировка инцидентов.
-- **Решение:** использовать `logger.exception` + `log_context` (`request_id`, `payment_id`, `user_id`, `action_id`).
+### Четкие критерии
+- Невозможно принять forged webhook без валидных доверенных атрибутов.
+- Скрипты не допускают параллельного запуска и restart loop.
+- Секреты не захардкожены и не логируются.
 
-### M3. Watchdog-скрипт без anti-overlap гарантий
-- **Где:** `watchdog.sh`.
-- **Impact:** возможны гонки рестартов Xray при overlapping cron/systemd timers.
-- **Решение:** `set -euo pipefail`, `flock`, backoff/jitter, ограничение частоты рестартов.
-
----
-
-## Пошаговый план исправлений
-
-## Step 1 — Блокеры релиза (срочно, до выкатки)
-1. Починить `session_scope` (`commit/rollback`).
-2. Привести webhook auth к корректному интерфейсу.
-3. Добавить smoke/integration тест: «успешный webhook активирует подписку и отправляет уведомление».
-4. Провести повторный dry-run оплаты на staging.
-
-## Step 2 — Стабильность и производительность
-1. Убрать sync SQLite из event-loop пути webhook.
-2. Добавить таймауты/ретраи с метриками на внешних вызовах (YooKassa/Xray).
-3. Ввести reclaim зависших `processing` платежей.
-
-## Step 3 — Консистентность данных и side-effects
-1. Внедрить transactional outbox для Xray-операций.
-2. Сделать обработку событий строго идемпотентной.
-3. Добавить reconciliation job: сверка БД и Xray state.
-
-## Step 4 — Наблюдаемость и операционная готовность
-1. Убрать `print`, перевести все error-paths на structured logging.
-2. Гарантировать наличие correlation IDs в критичных бизнес-сценариях.
-3. Завести дашборды/алерты:
-   - webhook 4xx/5xx rate,
-   - pending/processing backlog,
-   - Xray apply failures,
-   - DB pool saturation.
-
-## Step 5 — Production readiness gate
-1. Нагрузочный тест webhook + параллельные оплаты.
-2. Chaos-тесты: падение воркера в середине `activate_payment`.
-3. Security regression:
-   - проверка trusted proxy chain,
-   - тест обходов allowlist,
-   - валидация secret handling.
-4. Формальный Go/No-Go чеклист с владельцами и ETA.
+### Правила выполнения
+- Один секрет = одна цель использования.
+- Любая внешняя команда в shell должна выполняться под timeout и блокировкой.
 
 ---
 
-## Оценка готовности к выходу на рынок
+## Шаг 4 — Наблюдаемость, лог-контекст, готовность к релизу
+### Ошибки
+- Есть “немые” `except` без `log_context`.
+- Инциденты могут терять причинно-следственную связь (нет `request_id/payment_id/telegram_id`).
 
-- **Сейчас:** **NO-GO**.
-- **Условный GO:** после закрытия Step 1 и Step 2 + успешных тестов из Step 5.
-- **Риск при запуске без исправлений:** высокий (потеря консистентности биллинга, неактивация оплаченных подписок, деградация под нагрузкой).
+### Лучшее решение
+- Принудительный structured logging для критических потоков:
+  - биллинг,
+  - создание/удаление/деактивация пользователей,
+  - webhook обработка,
+  - фоновые компенсаторы.
+- Запретить `except: pass` в прод-коде.
+
+### Четкие критерии
+- 100% критических операций логируются с обязательными ключами контекста.
+- Любая ошибка трассируется до бизнес-сущности (платеж/пользователь/событие).
+- Есть релизный checklist + canary + rollback план.
+
+### Правила выполнения
+- Если ошибка не логируется с контекстом — задача считается невыполненной.
+- Перед релизом обязательны: smoke, load, failure-injection, rollback drill.
