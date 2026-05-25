@@ -3,10 +3,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 import base64
-from urllib.parse import quote
+import json
 from app.db.models import User
 from app.api.dependencies.common import get_async_session
-from app.core.settings import settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -20,26 +19,165 @@ async def get_subscription(uuid: str, session: AsyncSession = Depends(get_async_
     if not user or not user.is_active:
         return Response(content="", status_code=403)
 
-    host = settings.WEBHOOK_URL_DOMAIN
-    # Жестко фиксируем внешний порт 443 для всех конфигов
-    port = 443 
-    pbk = getattr(settings, 'VLESS_PUBLIC_KEY', '')
-    fp = getattr(settings, 'VLESS_FINGERPRINT', 'chrome')
-    sid = getattr(settings, 'VLESS_SHORT_ID', '')
+    config = {
+        "dns": {"servers": ["8.8.8.8", "1.1.1.1", "localhost"]},
+        "inbounds": [
+            {
+                "tag": "socks",
+                "port": 10808,
+                "listen": "127.0.0.1",
+                "protocol": "socks",
+                "settings": {"udp": True, "auth": "noauth"},
+                "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"], "routeOnly": True},
+            },
+            {
+                "tag": "http",
+                "port": 10809,
+                "listen": "127.0.0.1",
+                "protocol": "http",
+                "settings": {"allowTransparent": False},
+                "sniffing": {"enabled": True, "destOverride": ["http", "tls", "quic"], "routeOnly": True},
+            },
+        ],
+        "outbounds": [
+            {
+                "tag": "Echelon-1-TCP",
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": "neurosmmai.ru",
+                            "port": 443,
+                            "users": [{"id": user.vless_uuid, "encryption": "none", "flow": "xtls-rprx-vision"}],
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": "tcp",
+                    "security": "reality",
+                    "realitySettings": {
+                        "serverName": "www.samsung.com",
+                        "publicKey": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+                        "shortId": "45b6b57266629592",
+                        "fingerprint": "chrome",
+                    },
+                },
+            },
+            {
+                "tag": "Echelon-2-WS",
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": "neurosmmai.ru",
+                            "port": 443,
+                            "users": [{"id": user.vless_uuid, "encryption": "none"}],
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": "ws",
+                    "security": "tls",
+                    "tlsSettings": {"serverName": "neurosmmai.ru", "fingerprint": "chrome"},
+                    "wsSettings": {"path": "/api-v3-telemetry", "headers": {"Host": "neurosmmai.ru"}},
+                },
+            },
+            {
+                "tag": "Echelon-3-CF",
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": "cdn.neurosmmai.ru",
+                            "port": 443,
+                            "users": [{"id": user.vless_uuid, "encryption": "none"}],
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": "ws",
+                    "security": "tls",
+                    "tlsSettings": {"serverName": "cdn.neurosmmai.ru", "fingerprint": "chrome"},
+                    "wsSettings": {"path": "/api-v3-telemetry", "headers": {"Host": "cdn.neurosmmai.ru"}},
+                },
+            },
+            {
+                "tag": "Echelon-4-xHTTP",
+                "protocol": "vless",
+                "settings": {
+                    "vnext": [
+                        {
+                            "address": "neurosmmai.ru",
+                            "port": 443,
+                            "users": [{"id": user.vless_uuid, "encryption": "none"}],
+                        }
+                    ]
+                },
+                "streamSettings": {
+                    "network": "xhttp",
+                    "security": "tls",
+                    "tlsSettings": {"serverName": "neurosmmai.ru", "fingerprint": "chrome"},
+                    "xhttpSettings": {"path": "/api-v3-telemetry", "mode": "auto"},
+                },
+            },
+            {"tag": "direct", "protocol": "freedom"},
+            {"tag": "block", "protocol": "blackhole"},
+        ],
+        "routing": {
+            "domainStrategy": "AsIs",
+            "rules": [
+                {
+                    "type": "field",
+                    "outboundTag": "direct",
+                    "domain": [
+                        "domain:ru",
+                        "domain:su",
+                        "domain:рф",
+                        "geosite:category-ru",
+                        "domain:yandex.com",
+                        "domain:yandex.net",
+                        "domain:vk.com",
+                        "domain:ozon.ru",
+                        "domain:ozonusercontent.com",
+                        "domain:ozon-st.com",
+                        "domain:wildberries.ru",
+                        "domain:wb.ru",
+                        "domain:sberbank.ru",
+                    ],
+                },
+                {"type": "field", "outboundTag": "direct", "ip": ["geoip:ru", "geoip:private"]},
+                {"type": "field", "network": "tcp,udp", "balancerTag": "Smart_Switch"},
+            ],
+            "balancers": [
+                {
+                    "tag": "Smart_Switch",
+                    "selector": ["Echelon-"],
+                    "strategy": {
+                        "type": "leastLoad",
+                        "settings": {
+                            "maxRTT": "1500ms",
+                            "expected": 1,
+                            "baselines": ["150ms", "400ms", "600ms"],
+                            "tolerance": 0.2,
+                        },
+                    },
+                    "fallbackTag": "Echelon-2-WS",
+                }
+            ],
+        },
+        "burstObservatory": {
+            "pingConfig": {
+                "timeout": "3s",
+                "interval": "30s",
+                "sampling": 3,
+                "destination": "http://www.gstatic.com/generate_204",
+            },
+            "subjectSelector": ["Echelon-"],
+        },
+    }
 
-    # Генерируем 3 конфига с разным SNI для внутреннего роутинга в Xray
-    url_smart = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.samsung.com&sid={sid}&flow=xtls-rprx-vision"
-    url_usa = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.microsoft.com&sid={sid}&flow=xtls-rprx-vision"
-    url_fin = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.apple.com&sid={sid}&flow=xtls-rprx-vision"
-
-    configs = [
-        f"{url_smart}#{quote('🇪🇺 AUTO (Умный выбор)')}",
-        f"{url_usa}#{quote('🇺🇸 США (Чистый IP)')}",
-        f"{url_fin}#{quote('🇫🇮 Финляндия (Direct)')}"
-    ]
-    
-    raw_sub = "\n".join(configs)
-    b64_link = base64.b64encode(raw_sub.encode("utf-8")).decode("utf-8")
+    raw_json = json.dumps(config, ensure_ascii=False, separators=(",", ":"))
+    b64_link = base64.b64encode(raw_json.encode("utf-8")).decode("utf-8")
 
     try:
         from app.api.utils.subscription import get_dynamic_sub_info
