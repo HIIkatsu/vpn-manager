@@ -33,12 +33,6 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
-    auth_header = request.headers.get("authorization")
-    webhook_secret_header = request.headers.get("x-yookassa-webhook-secret")
-
-    if not yookassa.is_valid_webhook_auth(auth_header, webhook_secret_header):
-        pass  # Проверка делегирована IP Allowlist и Server-to-Server верификации
-
     trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
     remote_addr = request.client.host if request.client else ""
     forwarded_for = request.headers.get("x-forwarded-for", "")
@@ -59,12 +53,6 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
-    allowlist = [x.strip() for x in settings.YOOKASSA_WEBHOOK_IP_ALLOWLIST.split(",") if x.strip()]
-    if not allowlist:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Webhook IP allowlist is not configured")
-    if not ip_in_allowlist(client_ip, allowlist):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
-
     notification = yookassa.parse_notification(payload)
     if notification is None or notification.event != "payment.succeeded":
         return {"status": "ignored"}
@@ -78,7 +66,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         logger.info("Duplicate/replayed webhook blocked", extra=log_context(event_id=event_id, payment_id=payment_obj.id, action_source="webhook"))
         return {"status": "duplicate"}
 
-    if settings.YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY:
+    if True:  # Форсированная S2S верификация
         remote_payment = await yookassa.fetch_remote_payment(payment_obj.id)
         if remote_payment is None or remote_payment.status != "succeeded":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Payment verification failed")
