@@ -22,3 +22,17 @@ main_inline_keyboard = InlineKeyboardMarkup(
         ],
     ]
 )
+
+os_select_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📱 Android", callback_data="os_android"),
+            InlineKeyboardButton(text="🍎 iOS", callback_data="os_ios"),
+        ],
+        [
+            InlineKeyboardButton(text="🪟 Windows", callback_data="os_windows"),
+            InlineKeyboardButton(text="🐧 Linux", callback_data="os_linux"),
+        ],
+        [InlineKeyboardButton(text="💻 macOS", callback_data="os_macos")],
+    ]
+)

@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.handlers.profile import get_profile_data
-from app.bot.keyboards.main import main_inline_keyboard, main_keyboard
+from app.bot.keyboards.main import main_inline_keyboard, main_keyboard, os_select_keyboard
 from app.core.settings import settings
 from app.services.user_service import UserService
 
@@ -13,20 +13,41 @@ router = Router()
 
 WELCOME_TEXT = (
     "<b>Добро пожаловать в AnKo VPN 👋</b>\n\n"
-    "Подключение займет 1 минуту:\n"
-    "1) Откройте <b>👤 Профиль</b>\n"
-    "2) Нажмите кнопку вашего приложения (Hiddify / V2rayTun / Happ)\n"
-    "3) Подтвердите импорт и подключитесь\n\n"
-    "Если подписка не активна — откройте <b>💳 Подписка</b> и продлите доступ."
+    "Рекомендуемое приложение: <b>Hiddify</b>.\n"
+    "Сейчас выберите вашу операционную систему — это нужно для стабильного профиля и корректного fingerprint."
 )
 
 
 @router.message(CommandStart())
 async def start_handler(message: Message, session: AsyncSession, user_service: UserService) -> None:
     await user_service.get_or_create(message.from_user.id, message.from_user.username)
-#     await session.commit() # FIXED: UoW violation
-    await message.answer(WELCOME_TEXT, reply_markup=main_keyboard)
-    await message.answer("Или используйте inline-меню:", reply_markup=main_inline_keyboard)
+    await message.answer(WELCOME_TEXT, reply_markup=os_select_keyboard)
+    await message.answer("Главное меню:", reply_markup=main_keyboard)
+    await message.answer("Быстрые кнопки:", reply_markup=main_inline_keyboard)
+
+
+OS_LABELS = {
+    "android": "Android",
+    "ios": "iOS",
+    "windows": "Windows",
+    "linux": "Linux",
+    "macos": "macOS",
+}
+
+
+@router.callback_query(F.data.startswith("os_"))
+async def os_select_callback(callback: CallbackQuery, user_service: UserService) -> None:
+    selected_os = callback.data.replace("os_", "", 1)
+    if selected_os not in OS_LABELS:
+        await callback.answer("Неизвестная ОС", show_alert=True)
+        return
+    await user_service.set_preferred_os(callback.from_user.id, selected_os)
+    await callback.message.answer(
+        f"✅ Операционная система сохранена: {OS_LABELS[selected_os]}.\n"
+        "Теперь ссылки в профиле автоматически оптимизированы под ваше устройство.\n\n"
+        "Нажмите 🚀 Подключить VPN, чтобы открыть deeplink для Hiddify."
+    )
+    await callback.answer("ОС сохранена")
 
 
 @router.message(F.text == "🚀 Подключить VPN")
