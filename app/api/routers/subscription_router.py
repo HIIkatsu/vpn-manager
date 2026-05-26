@@ -7,51 +7,67 @@ from urllib.parse import quote
 from app.db.models import User
 from app.api.dependencies.common import get_async_session
 from app.core.settings import settings
+import logging
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/webhook/sub/{uuid}")
-async def get_subscription(uuid: str, session: AsyncSession = Depends(get_async_session)):
-    # Ищем юзера напрямую через сессию, чтобы избежать багов UserService
+async def get_subscription(uuid: str, os: str = "android", session: AsyncSession = Depends(get_async_session)):
     result = await session.execute(select(User).where(User.vless_uuid == uuid))
     user = result.scalars().first()
     
     if not user or not user.is_active:
         return Response(content="", status_code=403)
 
-    host = settings.WEBHOOK_URL_DOMAIN
-    # Жестко фиксируем внешний порт 443 для всех конфигов
-    port = 443 
+    host_fin = settings.WEBHOOK_URL_DOMAIN
+    cf_domain = "cf.neurosmmai.ru"
+    port = 443
+    
     pbk = getattr(settings, 'VLESS_PUBLIC_KEY', '')
-    fp = getattr(settings, 'VLESS_FINGERPRINT', 'chrome')
     sid = getattr(settings, 'VLESS_SHORT_ID', '')
 
-    # Генерируем 3 конфига с разным SNI для внутреннего роутинга в Xray
-    url_smart = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.samsung.com&sid={sid}&flow=xtls-rprx-vision"
-    url_usa = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.microsoft.com&sid={sid}&flow=xtls-rprx-vision"
-    url_fin = f"vless://{user.vless_uuid}@{host}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.apple.com&sid={sid}&flow=xtls-rprx-vision"
+    # Умная подмена отпечатка для iOS
+    os_clean = os.lower().strip()
+    if os_clean in ["ios", "mac", "apple"]:
+        fp = "safari"
+    else:
+        fp = "chrome"
+
+    # Эшелон 1: TCP Reality
+    url_tcp = f"vless://{user.vless_uuid}@{host_fin}:{port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni=www.samsung.com&sid={sid}&flow=xtls-rprx-vision"
+    
+    # Эшелон 2: Прямой WS
+    url_ws_direct = f"vless://{user.vless_uuid}@{host_fin}:{port}?encryption=none&security=tls&type=ws&host={host_fin}&sni={host_fin}&path=%2Fapi-v3-telemetry"
+    
+    # Эшелон 3: Cloudflare CDN
+    # ОТКАТ К ТВОЕМУ СТАРОМУ ФОРМАТУ: address = cf_domain, но host и sni = host_fin (основной домен).
+    # Так мультиплексор на сервере узнает пакет и пустит его дальше.
+    url_ws_cf = f"vless://{user.vless_uuid}@{cf_domain}:{port}?encryption=none&security=tls&type=ws&host={host_fin}&sni={host_fin}&path=%2Fapi-v3-telemetry"
 
     configs = [
-        f"{url_smart}#{quote('🇪🇺 AUTO (Умный выбор)')}",
-        f"{url_usa}#{quote('🇺🇸 США (Чистый IP)')}",
-        f"{url_fin}#{quote('🇫🇮 Финляндия (Direct)')}"
+        f"{url_tcp}#{quote('🚀 AUTO (TCP Reality)')}",
+        f"{url_ws_direct}#{quote('🛸 AUTO (WS Direct)')}",
+        f"{url_ws_cf}#{quote('🛡️ AUTO (Cloudflare CDN)')}"
     ]
     
     raw_sub = "\n".join(configs)
     b64_link = base64.b64encode(raw_sub.encode("utf-8")).decode("utf-8")
+    
+    safe_title = "AnKo VPN Smart"
 
     try:
         from app.api.utils.subscription import get_dynamic_sub_info
         sub_info = await get_dynamic_sub_info(locals())
         headers = {
             "Subscription-Userinfo": sub_info,
-            "profile-title": "AnKo VPN",
+            "profile-title": safe_title,
             "profile-update-interval": "24"
         }
-    except Exception:
+    except Exception as e:
+        logging.error(f"Info Error: {e}")
         headers = {
-            "profile-title": "AnKo VPN",
+            "profile-title": safe_title,
             "profile-update-interval": "24"
         }
 
