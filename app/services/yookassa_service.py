@@ -85,13 +85,13 @@ class YooKassaService:
                     await asyncio.sleep(0.2 * (2 ** attempt))
         raise RuntimeError(f"YooKassa find_one failed after retries for payment {payment_id}") from last_error
 
-    async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float) -> str:
+    async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float, return_url: str = "tg://resolve?domain=NeuroVPN_AI_bot") -> str:
         if YooPayment is None:
             raise RuntimeError("yookassa SDK is not installed")
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},
             "capture": True,
-            "confirmation": {"type": "redirect", "return_url": "tg://resolve?domain=NeuroVPN_AI_bot"},
+            "confirmation": {"type": "redirect", "return_url": return_url},
             "description": "Продление VPN-подписки на 30 дней",
             "metadata": {"user_id": str(user_id)},
         }

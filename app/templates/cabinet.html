@@ -1,53 +1,263 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Личный кабинет AnKo VPN</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AnKo VPN Smart | Личный кабинет</title>
+    <style>
+        :root {
+            --bg: #0f172a; --card-bg: #1e293b; --card-inner: rgba(0, 0, 0, 0.25);
+            --primary: #38bdf8; --primary-glow: rgba(56, 189, 248, 0.4);
+            --accent: #818cf8; --text-main: #f8fafc; --text-muted: #94a3b8;
+            --success: #10b981; --border: rgba(255, 255, 255, 0.08);
+        }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        
+        body { margin: 0; background-color: var(--bg); color: var(--text-main); display: flex; flex-direction: column; align-items: center; min-height: 100vh; position: relative; overflow-x: hidden; }
+        
+        body::before { content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px); background-size: 24px 24px; }
+        body::after { content: ""; position: fixed; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 60%); z-index: -1; border-radius: 50%; pointer-events: none; }
+        
+        .container { max-width: 440px; width: 100%; padding: 20px; padding-top: 10px; }
+        
+        /* Шапка */
+        .navbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
+        .logo { font-size: 22px; font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+        .avatar { width: 44px; height: 44px; background: linear-gradient(135deg, var(--accent), var(--primary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; cursor: pointer; border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.2s; }
+        .avatar:active { transform: scale(0.9); }
+
+        /* Вьюпорт страниц */
+        .page-view { display: none; animation: fadeIn 0.3s ease; }
+        .page-view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Карточка на главной */
+        .card { background: var(--card-bg); border-radius: 24px; padding: 28px 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 1px solid var(--border); text-align: center; position: relative; overflow: hidden; }
+        
+        .badge { display: inline-block; background: rgba(16, 185, 129, 0.15); color: var(--success); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .sub-date { display: block; font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
+        .sub-date b { color: var(--text-main); }
+
+        /* Безлимитный трафик (Анимация волны) */
+        .stats-block { background: var(--card-inner); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 16px; padding: 20px; margin-bottom: 25px; position: relative; overflow: hidden; }
+        .stats-block::before { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary)); background-size: 200% 100%; animation: gradientFlow 3s linear infinite; }
+        .traffic-title { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+        .traffic-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-bottom: 4px; }
+        .traffic-limit { font-size: 14px; color: var(--success); font-weight: 600; }
+        @keyframes gradientFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        /* Кнопки на главной */
+        .btn-main { display: block; width: 100%; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; text-decoration: none; padding: 18px; border-radius: 16px; font-size: 17px; font-weight: 700; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 8px 25px var(--primary-glow); margin-bottom: 12px; border: none; cursor: pointer; text-align: center; }
+        .btn-main:active { transform: scale(0.97); box-shadow: 0 4px 15px var(--primary-glow); }
+        .btn-secondary { display: block; width: 100%; background: transparent; color: var(--primary); padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 600; transition: 0.2s; border: 1px solid rgba(56, 189, 248, 0.25); cursor: pointer; }
+        .btn-secondary:active { background: rgba(56, 189, 248, 0.08); transform: scale(0.98); }
+        .btn-secondary.copied { background: rgba(16, 185, 129, 0.1); color: var(--success); border-color: var(--success); }
+
+        /* Выезжающая шторка (Drawer) */
+        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 99; opacity: 0; pointer-events: none; transition: 0.3s; }
+        .drawer-overlay.active { opacity: 1; pointer-events: auto; }
+        .drawer { position: fixed; top: 0; right: -320px; width: 300px; height: 100vh; background: var(--card-bg); z-index: 100; box-shadow: -10px 0 30px rgba(0,0,0,0.5); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
+        .drawer.active { right: 0; }
+        .drawer-header { padding: 25px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .drawer-header h2 { margin: 0; font-size: 18px; color: var(--text-main); }
+        .drawer-close { background: none; border: none; color: var(--text-muted); font-size: 28px; cursor: pointer; padding: 0; line-height: 1; }
+        
+        /* Меню в шторке */
+        .drawer-menu { padding: 15px 0; overflow-y: auto; }
+        .menu-item { padding: 16px 20px; display: flex; align-items: center; gap: 15px; color: var(--text-main); font-size: 16px; font-weight: 500; cursor: pointer; transition: background 0.2s; border-left: 3px solid transparent; }
+        .menu-item:hover, .menu-item:active { background: var(--card-inner); border-left-color: var(--primary); }
+        .menu-item .icon { font-size: 20px; width: 24px; text-align: center; }
+        
+        .drawer-divider { height: 1px; background: var(--border); margin: 10px 20px; }
+        .os-selector { padding: 10px 20px; }
+        .os-selector h4 { margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; }
+        .os-radio { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; color: var(--text-main); font-size: 15px; cursor: pointer; }
+        .os-radio input { accent-color: var(--primary); transform: scale(1.2); cursor: pointer; }
+
+        /* Внутренние страницы (Тарифы, Статистика) */
+        .page-header { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
+        .back-btn { background: var(--card-inner); border: 1px solid var(--border); color: var(--text-main); width: 40px; height: 40px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 18px; cursor: pointer; transition: 0.2s; }
+        .back-btn:active { transform: scale(0.9); }
+        .page-header h2 { margin: 0; font-size: 20px; }
+
+        .tariff-card { background: linear-gradient(145deg, var(--card-inner), rgba(255,255,255,0.02)); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
+        .tariff-info h3 { margin: 0 0 6px 0; font-size: 17px; color: var(--text-main); }
+        .tariff-info p { margin: 0; font-size: 13px; color: var(--text-muted); }
+        .btn-pay { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; border: none; padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; box-shadow: 0 4px 15px var(--primary-glow); transition: 0.2s; }
+        .btn-pay:active { transform: scale(0.95); }
+
+        .stat-row { display: flex; justify-content: space-between; padding: 16px; background: var(--card-inner); border-radius: 16px; border: 1px solid var(--border); margin-bottom: 12px; font-size: 15px; }
+        .stat-row span { color: var(--text-muted); }
+        .stat-row b { color: var(--text-main); font-weight: 600; }
+
+        /* Тост успеха */
+        .toast { position: fixed; top: -100px; left: 50%; transform: translateX(-50%); background: rgba(16, 185, 129, 0.9); color: white; padding: 16px 24px; border-radius: 16px; font-weight: 600; box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4); backdrop-filter: blur(10px); z-index: 1000; transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.2); }
+        .toast.show { top: 20px; }
+    </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
-  <main class="max-w-5xl mx-auto p-4 md:p-8">
-    <section class="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 md:p-10 shadow-2xl">
-      <h1 class="text-3xl md:text-4xl font-bold mb-3">Личный кабинет AnKo VPN</h1>
-      <p class="text-slate-300 mb-8">Управляйте подпиской, статистикой и подключением без Telegram.</p>
+<body>
 
-      <div class="grid md:grid-cols-2 gap-4 mb-8">
-        <div class="bg-slate-800 rounded-2xl p-4"><div class="text-slate-400 text-sm">Статус</div><div class="text-xl font-semibold">{{ 'Активна' if user.is_active else 'Неактивна' }}</div></div>
-        <div class="bg-slate-800 rounded-2xl p-4"><div class="text-slate-400 text-sm">Трафик</div><div class="text-xl font-semibold">{{ user.traffic_total_bytes }} bytes</div></div>
-        <div class="bg-slate-800 rounded-2xl p-4"><div class="text-slate-400 text-sm">Действует до</div><div class="text-xl font-semibold">{{ user.sub_end_date if user.sub_end_date else 'Не оформлена' }}</div></div>
-        <div class="bg-slate-800 rounded-2xl p-4"><div class="text-slate-400 text-sm">OS профиль</div><div class="text-xl font-semibold uppercase">{{ os_name }}</div></div>
-      </div>
+<div id="successToast" class="toast">
+    <span style="font-size: 20px;">✅</span> Оплата успешно завершена!
+</div>
 
-      <h2 class="text-2xl font-semibold mb-4">Выбор платформы</h2>
-      <div class="flex flex-wrap gap-2 mb-8">
-        {% for platform in ['android','ios','windows','macos','linux'] %}
-          <a class="px-4 py-2 rounded-xl border {{ 'bg-indigo-600 border-indigo-500' if os_name == platform else 'border-slate-700 hover:border-slate-500' }}" href="/cabinet/{{ user.vless_uuid }}?os={{ platform }}">{{ platform }}</a>
-        {% endfor %}
-      </div>
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
 
-      <h2 class="text-2xl font-semibold mb-4">Подключение</h2>
-      <div class="flex flex-wrap gap-3 mb-8">
-        <a href="{{ hiddify_deeplink }}" class="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500">Открыть в Hiddify</a>
-        <button onclick="copySub()" class="px-5 py-3 rounded-xl bg-slate-700 hover:bg-slate-600">Скопировать подписку</button>
-      </div>
-      <input id="subUrl" class="w-full rounded-xl bg-slate-800 border border-slate-700 p-3 mb-8" readonly value="{{ sub_url }}" />
+<div class="drawer" id="drawer">
+    <div class="drawer-header">
+        <h2>Меню кабинета</h2>
+        <button class="drawer-close" onclick="closeDrawer()">×</button>
+    </div>
+    <div class="drawer-menu">
+        <div class="menu-item" onclick="navigate('pay')">
+            <span class="icon">💳</span> Продлить подписку
+        </div>
+        <div class="menu-item" onclick="navigate('stats')">
+            <span class="icon">📊</span> Расширенная статистика
+        </div>
+        <div class="drawer-divider"></div>
+        <div class="os-selector">
+            <h4>Настройка ОС профиля</h4>
+            <label class="os-radio">iPhone / iOS <input type="radio" name="os" value="ios" {% if os_name == 'ios' %}checked{% endif %} onchange="changeOS('ios')"></label>
+            <label class="os-radio">Android <input type="radio" name="os" value="android" {% if os_name == 'android' %}checked{% endif %} onchange="changeOS('android')"></label>
+            <label class="os-radio">Windows <input type="radio" name="os" value="windows" {% if os_name == 'windows' %}checked{% endif %} onchange="changeOS('windows')"></label>
+            <label class="os-radio">macOS <input type="radio" name="os" value="mac" {% if os_name == 'mac' %}checked{% endif %} onchange="changeOS('mac')"></label>
+        </div>
+    </div>
+</div>
 
-      <h2 class="text-2xl font-semibold mb-4">Оплата</h2>
-      <div class="grid md:grid-cols-3 gap-3">
-        <a class="text-center px-4 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500" href="/cabinet/{{ user.vless_uuid }}/pay/100">1 месяц — 100₽</a>
-        <a class="text-center px-4 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500" href="/cabinet/{{ user.vless_uuid }}/pay/250">3 месяца — 250₽</a>
-        <a class="text-center px-4 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500" href="/cabinet/{{ user.vless_uuid }}/pay/900">1 год — 900₽</a>
-      </div>
-    </section>
-  </main>
+<div class="container">
+    <div class="navbar">
+        <div class="logo">AnKo VPN Smart</div>
+        <div class="avatar" onclick="openDrawer()">{{ user.username[0] | upper if user.username else 'U' }}</div>
+    </div>
 
-  <script>
-    function copySub() {
-      const el = document.getElementById('subUrl');
-      navigator.clipboard.writeText(el.value);
-      alert('Ссылка подписки скопирована');
+    <div id="page-main" class="page-view active">
+        <div class="card">
+            <div class="badge">Статус: Подключено</div>
+            <span class="sub-date">Подписка до: <b>{{ user.sub_end_date.strftime('%d.%m.%Y') if user.sub_end_date else 'Бессрочно' }}</b></span>
+
+            {% set used_gb = (user.traffic_total_bytes / 1073741824)|round(1) if user.traffic_total_bytes else 0.0 %}
+            <div class="stats-block">
+                <div class="traffic-title">Потрачено трафика</div>
+                <div class="traffic-value">{{ used_gb }} ГБ</div>
+                <div class="traffic-limit">⚡ Лимит: БЕЗЛИМИТ</div>
+            </div>
+
+            <a href="{{ hiddify_deeplink }}" class="btn-main">🚀 Подключить в 1 клик</a>
+            <button id="copyBtn" onclick="copySubscription()" class="btn-secondary">Скопировать ссылку подписки</button>
+        </div>
+    </div>
+
+    <div id="page-pay" class="page-view">
+        <div class="page-header">
+            <button class="back-btn" onclick="navigate('main')">←</button>
+            <h2>Продлить подписку</h2>
+        </div>
+        <div class="tariff-card">
+            <div class="tariff-info">
+                <h3>Тест-драйв</h3>
+                <p>1 месяц • Безлимит</p>
+            </div>
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/100" class="btn-pay">100 ₽</a>
+        </div>
+        <div class="tariff-card">
+            <div class="tariff-info">
+                <h3>Оптимальный</h3>
+                <p>3 месяца • Безлимит</p>
+            </div>
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/250" class="btn-pay">250 ₽</a>
+        </div>
+        <div class="tariff-card">
+            <div class="tariff-info">
+                <h3>Год спокойствия</h3>
+                <p>12 месяцев • Безлимит</p>
+            </div>
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/900" class="btn-pay">900 ₽</a>
+        </div>
+    </div>
+
+    <div id="page-stats" class="page-view">
+        <div class="page-header">
+            <button class="back-btn" onclick="navigate('main')">←</button>
+            <h2>Статистика</h2>
+        </div>
+        <div class="stat-row">
+            <span>Расход трафика</span>
+            <b>{{ used_gb }} ГБ</b>
+        </div>
+        <div class="stat-row">
+            <span>Лимит скорости</span>
+            <b style="color: var(--success);">Снято (MAX)</b>
+        </div>
+        <div class="stat-row">
+            <span>Текущее устройство</span>
+            <b style="text-transform: uppercase;">{{ os_name }}</b>
+        </div>
+        <div class="stat-row">
+            <span>Обход DPI (ТСПУ)</span>
+            <b style="color: var(--success);">Активен</b>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // Логика шторки
+    const drawer = document.getElementById('drawer');
+    const overlay = document.getElementById('drawerOverlay');
+
+    function openDrawer() {
+        drawer.classList.add('active');
+        overlay.classList.add('active');
     }
-  </script>
+
+    function closeDrawer() {
+        drawer.classList.remove('active');
+        overlay.classList.remove('active');
+    }
+
+    // Навигация (SPA)
+    function navigate(pageId) {
+        closeDrawer();
+        document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active'));
+        document.getElementById('page-' + pageId).classList.add('active');
+    }
+
+    // Смена ОС
+    function changeOS(os) {
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('os', os);
+        window.location.search = urlParams.toString();
+    }
+
+    // Копирование (без смайла)
+    function copySubscription() {
+        const link = "{{ sub_url }}";
+        navigator.clipboard.writeText(link).then(() => {
+            const btn = document.getElementById('copyBtn');
+            btn.classList.add('copied');
+            btn.innerText = "Ссылка скопирована (Вставьте в Hiddify)";
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerText = "Скопировать ссылку подписки";
+            }, 3000);
+        }).catch(err => alert("Ошибка копирования."));
+    }
+
+    // Проверка успешной оплаты из URL
+    window.onload = () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('payment') === 'success') {
+            const toast = document.getElementById('successToast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 4000);
+            
+            // Очищаем URL от параметра, чтобы не спамить тостом при перезагрузке
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+    };
+</script>
+
 </body>
 </html>

@@ -19,7 +19,7 @@ def _build_subscription_url(user: User, os_name: str) -> str:
 
 
 def _build_hiddify_deeplink(sub_url: str) -> str:
-    return f"hiddify://import/{quote(sub_url, safe='')}"
+    return f"hiddify://install-sub?url={quote(sub_url, safe='')}"
 
 @router.get("/webhook/sub/{uuid}")
 async def get_subscription(uuid: str, os: str = "android", session: AsyncSession = Depends(get_async_session)):
@@ -106,7 +106,7 @@ async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depen
         "sub_url": sub_url,
         "hiddify_deeplink": _build_hiddify_deeplink(sub_url),
     }
-    return templates.TemplateResponse(name="cabinet.html", context=context)
+    return templates.TemplateResponse(request=request, name="cabinet.html", context=context)
 
 
 @router.get("/cabinet/{uuid}/pay/{amount}")
@@ -122,6 +122,6 @@ async def web_cabinet_pay(uuid: str, amount: float, session: AsyncSession = Depe
     from app.core.container import get_billing_service
 
     billing = get_billing_service(session)
-    confirmation_url = await billing.create_subscription_payment(user_id=user.id, amount=amount)
+    confirmation_url = await billing.create_subscription_payment(user_id=user.id, amount=amount, return_url=f"https://{settings.WEBHOOK_URL_DOMAIN}/cabinet/{uuid}?payment=success")
     await session.commit()
     return RedirectResponse(url=confirmation_url, status_code=302)
