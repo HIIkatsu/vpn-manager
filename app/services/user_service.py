@@ -16,7 +16,13 @@ class UserService:
         if user is None:
             import uuid
             from app.db.models import User
-            user = User(telegram_id=telegram_id, username=username, vless_uuid=str(uuid.uuid4()), is_active=False)
+            user = User(
+                telegram_id=telegram_id,
+                username=username,
+                vless_uuid=str(uuid.uuid4()),
+                is_active=False,
+                preferred_os="android",
+            )
             db_session = getattr(self.users, "session", self.users)
             db_session.add(user)
             await db_session.commit()
@@ -25,6 +31,15 @@ class UserService:
                 user.username = username
                 db_session = getattr(self.users, "session", self.users)
                 await db_session.commit()
+        return user
+
+    async def set_preferred_os(self, telegram_id: int, preferred_os: str) -> User | None:
+        user = await self.get_by_telegram_id(telegram_id)
+        if user is None:
+            return None
+        user.preferred_os = preferred_os
+        db_session = getattr(self.users, "session", self.users)
+        await db_session.commit()
         return user
 
     async def get_by_telegram_id(self, telegram_id: int):
@@ -37,4 +52,3 @@ class UserService:
     async def get_by_uuid(self, user_uuid: str, session: AsyncSession | None = None) -> User | None:
         db_session = session if session is not None else getattr(self.users, "session", self.users)
         return await db_session.scalar(select(User).where(User.vless_uuid == user_uuid))
-

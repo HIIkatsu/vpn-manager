@@ -17,6 +17,10 @@ def format_bytes(b: int) -> str:
         b /= 1024.0
     return f"{b:.2f} TB"
 
+def _build_hiddify_deeplink(sub_url: str) -> str:
+    return f"hiddify://import/{quote(sub_url, safe='')}"
+
+
 def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
     if user.sub_end_date:
         sub_end_date = user.sub_end_date.strftime("%d.%m.%Y в %H:%M")
@@ -39,14 +43,17 @@ def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
     )
     
     inline_buttons = []
-    sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}"
+    os_name = getattr(user, "preferred_os", "android")
+    sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}?os={os_name}"
+    deeplink = _build_hiddify_deeplink(sub_url)
     
     if user.is_active:
         profile_text += (
-            "<b>Как подключить:</b>\n"
-            "Нажми кнопку ниже, чтобы скопировать ключ, затем вставь его в разделе подписок (Subscription) твоего VPN-клиента и нажми «Обновить»."
+            "<b>Подключение в 1 клик (рекомендуем Hiddify):</b>\n"
+            "Нажмите кнопку ниже — приложение Hiddify откроется и предложит импорт конфигурации автоматически."
         )
-        inline_buttons.append([InlineKeyboardButton(text=" Скопировать ключ подписки", copy_text={"text": sub_url})])
+        inline_buttons.append([InlineKeyboardButton(text="🚀 Открыть в Hiddify (deeplink)", url=deeplink)])
+        inline_buttons.append([InlineKeyboardButton(text="📋 Скопировать ссылку подписки", copy_text={"text": sub_url})])
     else:
         profile_text += "⚠️ <b>Доступ ограничен.</b> Используйте меню ниже для оплаты."
         
