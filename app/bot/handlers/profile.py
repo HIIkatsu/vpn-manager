@@ -1,4 +1,3 @@
-from urllib.parse import quote
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -16,9 +15,6 @@ def format_bytes(b: int) -> str:
             return f"{b:.2f} {unit}"
         b /= 1024.0
     return f"{b:.2f} TB"
-
-def _build_hiddify_deeplink(sub_url: str) -> str:
-    return f"hiddify://import/{quote(sub_url, safe='')}"
 
 
 def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
@@ -45,14 +41,14 @@ def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
     inline_buttons = []
     os_name = getattr(user, "preferred_os", "android")
     sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}?os={os_name}"
-    deeplink = _build_hiddify_deeplink(sub_url)
+    cabinet_url = f"https://{webhook_domain}/cabinet/{user.vless_uuid}?os={os_name}"
     
     if user.is_active:
         profile_text += (
-            "<b>Подключение в 1 клик (рекомендуем Hiddify):</b>\n"
-            "Нажмите кнопку ниже — приложение Hiddify откроется и предложит импорт конфигурации автоматически."
+            "<b>Управление подпиской и подключением:</b>\n"
+            "Откройте веб-кабинет: выбор устройства, оплата, статистика, подключение в 1 клик."
         )
-        inline_buttons.append([InlineKeyboardButton(text="🚀 Открыть в Hiddify (deeplink)", url=deeplink)])
+        inline_buttons.append([InlineKeyboardButton(text="🌐 Открыть веб-кабинет", url=cabinet_url)])
         inline_buttons.append([InlineKeyboardButton(text="📋 Скопировать ссылку подписки", copy_text={"text": sub_url})])
     else:
         profile_text += "⚠️ <b>Доступ ограничен.</b> Используйте меню ниже для оплаты."
