@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 import base64
 import math
 import json
+import hmac
 from urllib.parse import quote
 from datetime import datetime, timezone
 from app.db.models import User
@@ -50,28 +51,21 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
     divider = lambda text: f"vless://{fake}@127.0.0.1:80?type=tcp#{quote(text)}"
     
     configs = [
-        # Блок 1: Автоматика
         divider("▼ 💎 РЕКОМЕНДУЕМ ▼"),
         make_tcp(host_ru, "🇪🇺 ⚖️ Балансир"),
         make_tcp(host_fin_ip, "🇪🇺 ⚡ Турбо-скорость", target_port=20443),
         make_tcp(host_ru, "🇪🇺 🛡️ LTE / 4G Анти-глушилка", custom_sid="45b6b57266629594", custom_sni="vk.com"),
-        
-        # Блок 2: Резервные порты
         divider("▼ 🆘 ДЛЯ МОБИЛЬНОГО ▼"),
         make_tcp(host_fin_ip, "🇫🇮 Финляндия 2", target_port=20443),
         make_tcp(host_de, "🇩🇪 Германия 2", target_port=20443),
         make_tcp(host_nl, "🇳🇱 Нидерланды 2", target_port=20443),
         make_tcp(host_fin_ip, "🇬🇧 Великобритания", target_port=2083),
-        
-        # Блок 3: Стандартные порты
         divider("▼ 🌍 ДЛЯ WI-FI ▼"),
         make_tcp(host_fin_domain, "🇫🇮 Финляндия 1"),
         make_tcp(host_de, "🇩🇪 Германия 1"),
         make_tcp(host_nl, "🇳🇱 Нидерланды 1"),
         make_tcp(host_fin_domain, "🇸🇪 Швеция"),
         make_tcp(host_ru, "🇷🇺 Россия (Без VPN)", custom_sid="45b6b57266629593", custom_sni="ya.ru"),
-        
-        # Блок 4: Сервисы
         divider("▼ 🚀 ДЛЯ СЕРВИСОВ ▼"),
         make_tcp(host_fin_domain, "🇺🇸 📺 YouTube 4K"),
         make_tcp(host_fin_domain, "🇺🇸 🤖 ChatGPT"),
@@ -93,7 +87,16 @@ async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depen
     return templates.TemplateResponse(request=request, name="cabinet.html", context={"request": request, "user": user, "sub_url": _build_subscription_url(request, user), "hiddify_deeplink": _build_hiddify_deeplink(_build_subscription_url(request, user))})
 
 @router.get("/webhook/sync-nodes-777")
-async def generate_nodes_config(session: AsyncSession = Depends(get_async_session)):
+async def generate_nodes_config(request: Request, session: AsyncSession = Depends(get_async_session)):
+    # SECURITY FIX: Проверка токена
+    auth = request.headers.get("authorization", "")
+    expected_token = getattr(settings, 'SYNC_NODES_TOKEN', 'AnKo_Secure_Sync_2026')
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Forbidden: Missing Bearer Token")
+    token = auth.split(" ")[1]
+    if not hmac.compare_digest(token, expected_token):
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid Token")
+
     users = (await session.execute(select(User))).scalars().all()
     clients = [{"id": str(u.vless_uuid), "flow": "xtls-rprx-vision", "email": str(u.vless_uuid)[:8]} for u in users if getattr(u, 'is_active', False)]
     prv, sid = 'sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI', getattr(settings, 'VLESS_SHORT_ID', '45b6b57266629592')
