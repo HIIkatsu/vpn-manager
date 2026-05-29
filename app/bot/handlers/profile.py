@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -8,6 +10,7 @@ from app.services.traffic_stats_service import TrafficStatsService
 from app.services.xray_manager import XrayManager
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 def format_bytes(b: int) -> str:
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -69,6 +72,11 @@ async def _fetch_user_traffic(telegram_id: int, session) -> str:
         used_bytes = await TrafficStatsService.get_total_with_live(session, telegram_id, live_bytes)
         return format_bytes(used_bytes)
     except Exception:
+        logger.warning(
+            "Failed to fetch user traffic for profile",
+            extra={"telegram_id": telegram_id, "action_source": "profile_traffic"},
+            exc_info=True,
+        )
         return "0.00 B"
 
 @router.message(F.text.in_({"Профиль", "👤 Профиль"}))
@@ -91,7 +99,11 @@ async def refresh_profile_callback(callback: CallbackQuery, user_service: UserSe
         try:
             await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         except Exception:
-            pass
+            logger.info(
+                "Profile message edit was not applied",
+                extra={"telegram_id": callback.from_user.id, "action_source": "refresh_profile"},
+                exc_info=True,
+            )
     await callback.answer("Данные обновлены")
 
 @router.callback_query(F.data == "open_profile")
@@ -146,7 +158,11 @@ async def force_check_payment_callback(callback: CallbackQuery):
                     reply_markup=keyboard_success
                 )
             except Exception:
-                pass
+                logger.info(
+                    "Payment success message edit was not applied",
+                    extra={"telegram_id": callback.from_user.id, "action_source": "force_check_payment"},
+                    exc_info=True,
+                )
             await callback.answer(f"✅ Подписка {period_text} activated!")
             return
             
@@ -162,7 +178,11 @@ async def force_check_payment_callback(callback: CallbackQuery):
                     reply_markup=wait_keyboard
                 )
             except Exception:
-                pass
+                logger.info(
+                    "Payment waiting message edit was not applied",
+                    extra={"telegram_id": callback.from_user.id, "action_source": "force_check_payment"},
+                    exc_info=True,
+                )
                 
             await callback.answer("⏳ Платёж всё ещё обрабатывается банком.", show_alert=True)
             return
@@ -177,5 +197,9 @@ async def force_check_payment_callback(callback: CallbackQuery):
                 reply_markup=fail_keyboard
             )
         except Exception:
-            pass
+            logger.info(
+                "Payment failure message edit was not applied",
+                extra={"telegram_id": callback.from_user.id, "action_source": "force_check_payment"},
+                exc_info=True,
+            )
         await callback.answer("❌ Платёж отклонён.", show_alert=True)

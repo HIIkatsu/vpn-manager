@@ -1,4 +1,8 @@
+import logging
+
 from app.services.xray_manager import XrayManager
+
+logger = logging.getLogger(__name__)
 
 
 def format_bytes(b: int) -> str:
@@ -20,4 +24,5 @@ async def get_dynamic_sub_info(local_vars) -> str:
         exp = int(user.sub_end_date.timestamp()) if user.sub_end_date else 0
         return f"upload=0; download={used}; total=1099511627776; expire={exp}"
     except Exception:
+        logger.warning("Failed to build dynamic subscription info", exc_info=True)
         return "upload=0; download=0; total=1099511627776; expire=0"

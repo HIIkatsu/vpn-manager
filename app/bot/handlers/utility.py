@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -10,6 +11,7 @@ from app.services.traffic_stats_service import TrafficStatsService
 from app.services.xray_manager import XrayManager
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 def format_bytes(b: int) -> str:
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -60,6 +62,11 @@ async def _get_user_traffic(telegram_id: int, session) -> int:
         live_bytes = stats.get(str(telegram_id), 0)
         return await TrafficStatsService.get_total_with_live(session, telegram_id, live_bytes)
     except Exception:
+        logger.warning(
+            "Failed to fetch user traffic for stats",
+            extra={"telegram_id": telegram_id, "action_source": "stats_traffic"},
+            exc_info=True,
+        )
         return 0
 
 @router.message(Command("stats"))

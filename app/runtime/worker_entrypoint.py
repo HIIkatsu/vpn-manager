@@ -1,8 +1,11 @@
 import asyncio
+import logging
 
 from app.runtime.workers import outbox_loop, traffic_stats_loop, expiry_loop, notification_loop
 from app.services.xray_manager import XrayManager
 
+
+logger = logging.getLogger(__name__)
 
 async def run_workers() -> None:
     xray_manager = XrayManager()
@@ -23,7 +26,7 @@ def main() -> None:
     try:
         asyncio.run(run_workers())
     except KeyboardInterrupt:
-        pass
+        logger.info("Shutdown requested by keyboard interrupt")
 
 
 if __name__ == "__main__":

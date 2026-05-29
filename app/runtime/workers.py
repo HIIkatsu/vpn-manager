@@ -3,14 +3,16 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.bot.core import bot
 from app.core.logging_utils import log_context
 from app.db.database import async_session_maker
-from app.db.models import OutboxEvent, User
+from app.db.models import OutboxEvent, SubscriptionNotification, User
 from app.db.repositories.outbox_repo import OutboxRepository
 from app.services.transaction import session_scope
 from app.services.xray_manager import XrayManager
 from app.services.user_lifecycle import delete_user_with_relations
+from app.core.settings import settings
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 logger = logging.getLogger(__name__)
@@ -144,55 +146,145 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
             logger.exception("Expiry Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)
 
-# --- МИКРО-ТАСКА 4: КРАСИВЫЕ УВЕДОМЛЕНИЯ (Раз в час) ---
+# --- МИКРО-ТАСКА 4: ИДЕМПОТЕНТНЫЕ УВЕДОМЛЕНИЯ О ПОДПИСКЕ (Раз в час) ---
+def _ensure_aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _notification_type_for_hours_left(hours_left: float) -> str | None:
+    if 48 < hours_left <= 72:
+        return "3_days"
+    if 12 < hours_left <= 24:
+        return "1_day"
+    if 0 < hours_left <= 12:
+        return "0_days"
+    return None
+
+
+async def _claim_subscription_notification(user: dict, notify_type: str, now: datetime) -> int | None:
+    async with async_session_maker() as session:
+        try:
+            marker = await session.scalar(
+                select(SubscriptionNotification).where(
+                    SubscriptionNotification.user_id == user["id"],
+                    SubscriptionNotification.notify_type == notify_type,
+                    SubscriptionNotification.sub_end_date == user["sub_end_date"],
+                )
+            )
+            stale_processing_cutoff = now - timedelta(minutes=10)
+            if marker is None:
+                marker = SubscriptionNotification(
+                    user_id=user["id"],
+                    notify_type=notify_type,
+                    sub_end_date=user["sub_end_date"],
+                    status="processing",
+                    locked_at=now,
+                )
+                session.add(marker)
+            elif marker.status == "sent":
+                return None
+            elif marker.status == "processing" and marker.locked_at and _ensure_aware(marker.locked_at) > stale_processing_cutoff:
+                return None
+            elif marker.retry_at and _ensure_aware(marker.retry_at) > now:
+                return None
+            else:
+                marker.status = "processing"
+                marker.locked_at = now
+
+            await session.commit()
+            return marker.id
+        except IntegrityError:
+            await session.rollback()
+            return None
+
+
+async def _finalize_subscription_notification(marker_id: int, *, sent: bool, error: str | None = None) -> None:
+    async with async_session_maker() as session:
+        marker = await session.get(SubscriptionNotification, marker_id)
+        if marker is None:
+            return
+        now = datetime.now(timezone.utc)
+        marker.locked_at = None
+        if sent:
+            marker.status = "sent"
+            marker.sent_at = now
+            marker.last_error = None
+            marker.retry_at = None
+        else:
+            marker.status = "pending"
+            marker.last_error = (error or "telegram send failed")[:4000]
+            marker.retry_at = now + timedelta(minutes=30)
+        await session.commit()
+
+
 async def notification_loop(interval_seconds: int = 3600) -> None:
-    notified_state = {}
     while True:
         try:
-            async with session_scope(async_session_maker) as session:
-                now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            async with async_session_maker() as session:
                 active_users = (await session.execute(
                     select(User).where(User.is_active.is_(True), User.sub_end_date.is_not(None))
                 )).scalars().all()
+                snapshots = [
+                    {
+                        "id": user.id,
+                        "telegram_id": user.telegram_id,
+                        "vless_uuid": user.vless_uuid,
+                        "sub_end_date": _ensure_aware(user.sub_end_date),
+                    }
+                    for user in active_users
+                ]
 
-                for user in active_users:
-                    user_end = user.sub_end_date.replace(tzinfo=timezone.utc) if user.sub_end_date.tzinfo is None else user.sub_end_date
-                    delta = user_end - now
-                    hours_left = delta.total_seconds() / 3600
+            for user in snapshots:
+                delta = user["sub_end_date"] - now
+                hours_left = delta.total_seconds() / 3600
+                if hours_left <= 0:
+                    continue
 
-                    if hours_left <= 0: continue
+                notify_type = _notification_type_for_hours_left(hours_left)
+                if not notify_type:
+                    continue
 
-                    notify_type = None
-                    if 48 < hours_left <= 72: notify_type = "3_days"
-                    elif 12 < hours_left <= 24: notify_type = "1_day"
-                    elif 0 < hours_left <= 12: notify_type = "0_days"
+                marker_id = await _claim_subscription_notification(user, notify_type, now)
+                if marker_id is None:
+                    continue
 
-                    if notify_type:
-                        state_key = f"{user.telegram_id}_{notify_type}_{user.sub_end_date.strftime('%Y%m%d')}"
-                        if state_key not in notified_state:
-                            try:
-                                uuid_short = str(user.vless_uuid)[:8]
-                                end_msk = (user.sub_end_date + timedelta(hours=3)).strftime("%d.%m.%Y, %H:%M")
-                                d_left = int(hours_left // 24)
-                                h_left = int(hours_left % 24)
-                                time_str = f"{d_left} дн. {h_left} ч." if d_left > 0 else f"{h_left} ч."
-                                
-                                msg = (
-                                    f"<b>Уведомление по подписке <code>{uuid_short}</code>:</b>\n\n"
-                                    f"⚠️ <b>Ваш тариф скоро закончится.</b>\n"
-                                    f"Выберите актуальный тариф, чтобы продолжить использование сервиса.\n\n"
-                                    f"<b>Статус подписки:</b>\n"
-                                    f"<blockquote>⏳ Осталось времени: {time_str}\n"
-                                    f"📅 Дата окончания: {end_msk} (МСК)</blockquote>\n\n"
-                                    f"<i>Успейте продлить выгодно, при истечении подписки доступ прекратится 👇</i>"
-                                )
-                                kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Личный кабинет", url=f"https://neurosmmai.ru/cabinet/{user.vless_uuid}")]])
-                                await bot.send_message(chat_id=int(user.telegram_id), text=msg, parse_mode="HTML", reply_markup=kb)
-                                notified_state[state_key] = True
-                            except Exception:
-                                pass 
+                try:
+                    uuid_short = str(user["vless_uuid"])[:8]
+                    end_msk = (user["sub_end_date"] + timedelta(hours=3)).strftime("%d.%m.%Y, %H:%M")
+                    d_left = int(hours_left // 24)
+                    h_left = int(hours_left % 24)
+                    time_str = f"{d_left} дн. {h_left} ч." if d_left > 0 else f"{h_left} ч."
 
-            if len(notified_state) > 5000: notified_state.clear()
+                    msg = (
+                        f"<b>Уведомление по подписке <code>{uuid_short}</code>:</b>\n\n"
+                        f"⚠️ <b>Ваш тариф скоро закончится.</b>\n"
+                        f"Выберите актуальный тариф, чтобы продолжить использование сервиса.\n\n"
+                        f"<b>Статус подписки:</b>\n"
+                        f"<blockquote>⏳ Осталось времени: {time_str}\n"
+                        f"📅 Дата окончания: {end_msk} (МСК)</blockquote>\n\n"
+                        f"<i>Успейте продлить выгодно, при истечении подписки доступ прекратится 👇</i>"
+                    )
+                    kb = InlineKeyboardMarkup(
+                        inline_keyboard=[[
+                            InlineKeyboardButton(
+                                text="👤 Личный кабинет",
+                                url=f"https://{settings.WEBHOOK_URL_DOMAIN}/cabinet/{user['vless_uuid']}",
+                            )
+                        ]]
+                    )
+                    await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML", reply_markup=kb)
+                    await _finalize_subscription_notification(marker_id, sent=True)
+                except Exception as exc:
+                    logger.exception(
+                        "Failed to send subscription notification",
+                        extra=log_context(
+                            telegram_id=user["telegram_id"],
+                            event_id=str(marker_id),
+                            action_source="notification_loop",
+                        ),
+                    )
+                    await _finalize_subscription_notification(marker_id, sent=False, error=str(exc))
         except Exception as exc:
             logger.exception("Notification Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)

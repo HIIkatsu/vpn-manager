@@ -36,13 +36,13 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
     user = result.scalars().first()
     if not user or not user.is_active: return Response(content="", status_code=403)
     
-    host_fin_domain = getattr(settings, 'WEBHOOK_URL_DOMAIN', 'neurosmmai.ru')
-    host_fin_ip = "150.251.152.174"
-    host_de = "132.243.194.119"
-    host_nl = "194.50.94.177"
-    host_ru = "132.243.230.173"
+    host_fin_domain = settings.WEBHOOK_URL_DOMAIN
+    host_fin_ip = settings.FINLAND_PUBLIC_IP
+    host_de = settings.GERMANY_PUBLIC_IP
+    host_nl = settings.NETHERLANDS_PUBLIC_IP
+    host_ru = settings.RUSSIA_BALANCER_IP
     
-    pbk = settings.VLESS_PUBLIC_KEY
+    pbk = settings.XRAY_REALITY_PUBLIC_KEY or settings.VLESS_PUBLIC_KEY
     sid = settings.VLESS_SHORT_ID
     fp = "safari" if os.lower().strip() in ["ios", "mac", "apple"] else "chrome"
     
@@ -55,19 +55,19 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
     configs = [
         divider("▼ 💎 РЕКОМЕНДУЕМ ▼"),
         make_tcp(host_ru, "🇪🇺 ⚖️ Балансир"),
-        make_tcp(host_fin_ip, "🇪🇺 ⚡ Турбо-скорость", target_port=20443),
-        make_tcp(host_ru, "🇪🇺 🛡️ LTE / 4G Анти-глушилка", custom_sid="45b6b57266629594", custom_sni="vk.com"),
+        make_tcp(host_fin_ip, "🇪🇺 ⚡ Турбо-скорость", target_port=settings.XRAY_REDIRECT_PORT),
+        make_tcp(host_ru, "🇪🇺 🛡️ LTE / 4G Анти-глушилка", custom_sid=settings.XRAY_RU_WHITELIST_SHORT_ID, custom_sni="vk.com"),
         divider("▼ 🆘 ДЛЯ МОБИЛЬНОГО ▼"),
-        make_tcp(host_fin_ip, "🇫🇮 Финляндия 2", target_port=20443),
-        make_tcp(host_de, "🇩🇪 Германия 2", target_port=20443),
-        make_tcp(host_nl, "🇳🇱 Нидерланды 2", target_port=20443),
+        make_tcp(host_fin_ip, "🇫🇮 Финляндия 2", target_port=settings.XRAY_REDIRECT_PORT),
+        make_tcp(host_de, "🇩🇪 Германия 2", target_port=settings.XRAY_REDIRECT_PORT),
+        make_tcp(host_nl, "🇳🇱 Нидерланды 2", target_port=settings.XRAY_REDIRECT_PORT),
         make_tcp(host_fin_ip, "🇬🇧 Великобритания", target_port=2083),
         divider("▼ 🌍 ДЛЯ WI-FI ▼"),
         make_tcp(host_fin_domain, "🇫🇮 Финляндия 1"),
         make_tcp(host_de, "🇩🇪 Германия 1"),
         make_tcp(host_nl, "🇳🇱 Нидерланды 1"),
         make_tcp(host_fin_domain, "🇸🇪 Швеция"),
-        make_tcp(host_ru, "🇷🇺 Россия (Без VPN)", custom_sid="45b6b57266629593", custom_sni="ya.ru"),
+        make_tcp(host_ru, "🇷🇺 Россия (Без VPN)", custom_sid=settings.XRAY_RU_CLEAN_SHORT_ID, custom_sni="ya.ru"),
         divider("▼ 🚀 ДЛЯ СЕРВИСОВ ▼"),
         make_tcp(host_fin_domain, "🇺🇸 📺 YouTube 4K"),
         make_tcp(host_fin_domain, "🇺🇸 🤖 ChatGPT"),
@@ -126,19 +126,19 @@ async def generate_nodes_config(request: Request, session: AsyncSession = Depend
       "log": {"loglevel": "warning"},
       "inbounds": [
         {
-          "listen": "0.0.0.0", "port": 443, "protocol": "vless", "tag": "vless-smart",
+          "listen": "0.0.0.0", "port": settings.XRAY_MAIN_PORT, "protocol": "vless", "tag": "vless-smart",
           "settings": {"clients": clients, "decryption": "none"},
           "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "www.samsung.com:443", "xver": 0, "serverNames": ["www.samsung.com"], "privateKey": prv, "shortIds": [sid]}}
         },
         {
-          "listen": "0.0.0.0", "port": 10444, "protocol": "vless", "tag": "vless-ru-clean",
+          "listen": "0.0.0.0", "port": settings.XRAY_RU_CLEAN_PORT, "protocol": "vless", "tag": "vless-ru-clean",
           "settings": {"clients": clients, "decryption": "none"},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "ya.ru:443", "xver": 0, "serverNames": ["ya.ru", "yandex.ru"], "privateKey": prv, "shortIds": ["45b6b57266629593"]}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "ya.ru:443", "xver": 0, "serverNames": ["ya.ru", "yandex.ru"], "privateKey": prv, "shortIds": [settings.XRAY_RU_CLEAN_SHORT_ID]}}
         },
         {
-          "listen": "0.0.0.0", "port": 10445, "protocol": "vless", "tag": "vless-ru-whitelist",
+          "listen": "0.0.0.0", "port": settings.XRAY_RU_WHITELIST_PORT, "protocol": "vless", "tag": "vless-ru-whitelist",
           "settings": {"clients": clients, "decryption": "none"},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "vk.com:443", "xver": 0, "serverNames": ["vk.com", "m.vk.com"], "privateKey": prv, "shortIds": ["45b6b57266629594"]}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "vk.com:443", "xver": 0, "serverNames": ["vk.com", "m.vk.com"], "privateKey": prv, "shortIds": [settings.XRAY_RU_WHITELIST_SHORT_ID]}}
         }
       ]
     }
