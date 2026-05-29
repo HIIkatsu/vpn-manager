@@ -10,6 +10,7 @@ from app.db.models import OutboxEvent, User
 from app.db.repositories.outbox_repo import OutboxRepository
 from app.services.transaction import session_scope
 from app.services.xray_manager import XrayManager
+from app.services.user_lifecycle import delete_user_with_relations
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
             delivered, failed = 0, 0
             async with session_scope(async_session_maker) as session:
                 repo = OutboxRepository(session)
-                events = await repo.get_pending_batch(limit=50)
+                events = await repo.claim_pending_batch(limit=50)
                 event_snapshots = [{"id": e.id, "event_type": e.event_type, "payload_json": e.payload_json} for e in events]
             if not event_snapshots:
                 await asyncio.sleep(interval_seconds)
@@ -62,9 +63,11 @@ async def traffic_stats_loop(interval_seconds: int = 60) -> None:
             stats = await xray.get_live_traffic_stats(reset=True)
             if stats:
                 async with session_scope(async_session_maker) as session:
-                    users = (await session.execute(select(User).where(User.vless_uuid.in_(list(stats.keys()))))).scalars().all()
+                    users = (
+                        await session.execute(select(User).where(User.telegram_id.in_([int(k) for k in stats.keys() if str(k).isdigit()])))
+                    ).scalars().all()
                     for user in users:
-                        added_traffic = stats.get(user.vless_uuid, 0)
+                        added_traffic = stats.get(str(user.telegram_id), 0)
                         if added_traffic > 0:
                             user.traffic_total_bytes = (user.traffic_total_bytes or 0) + added_traffic
         except Exception as exc:
@@ -76,28 +79,67 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
     xray = XrayManager()
     while True:
         try:
-            async with session_scope(async_session_maker) as session:
-                now = datetime.now(timezone.utc)
-                expired = (await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date < now))).scalars().all()
-                for user in expired:
-                    if await xray.remove_client(email=str(user.telegram_id)):
-                        user.is_active = False
-                        msg = (
-                            f"🔴 <b>Срок действия подписки завершён!</b>\n\n"
-                            f"Доступ к VPN ограничен. Вы можете продлить подписку в любой момент через меню бота."
-                        )
-                        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Личный кабинет", url=f"https://neurosmmai.ru/cabinet/{user.vless_uuid}")]])
-                        try: await bot.send_message(chat_id=int(user.telegram_id), text=msg, parse_mode="HTML", reply_markup=kb)
-                        except Exception: pass
-                
+            now = datetime.now(timezone.utc)
+            async with async_session_maker() as session:
+                expired_rows = (
+                    await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date < now))
+                ).scalars().all()
+                expired_snapshots = [
+                    {"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}
+                    for user in expired_rows
+                ]
+
                 deadline = now - timedelta(days=7)
-                to_delete = (await session.execute(select(User).where(User.is_active.is_(False), User.sub_end_date < deadline))).scalars().all()
-                for user in to_delete:
-                    await xray.remove_client(email=str(user.telegram_id))
-                    msg = "🗑️ <b>Ваш профиль удален.</b>\n\nВы не продлевали подписку более 7 дней. Для возвращения создайте профиль заново."
-                    try: await bot.send_message(chat_id=int(user.telegram_id), text=msg, parse_mode="HTML")
-                    except Exception: pass
-                    await session.delete(user)
+                delete_rows = (
+                    await session.execute(select(User).where(User.is_active.is_(False), User.sub_end_date < deadline))
+                ).scalars().all()
+                delete_snapshots = [
+                    {"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}
+                    for user in delete_rows
+                ]
+
+            expired_results: dict[int, bool] = {}
+            for user in expired_snapshots:
+                removed = await xray.remove_client(email=str(user["telegram_id"]))
+                expired_results[user["id"]] = removed
+                if removed:
+                    msg = (
+                        f"🔴 <b>Срок действия подписки завершён!</b>\n\n"
+                        f"Доступ к VPN ограничен. Вы можете продлить подписку в любой момент через меню бота."
+                    )
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Личный кабинет", url=f"https://neurosmmai.ru/cabinet/{user['vless_uuid']}")]])
+                    try:
+                        await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML", reply_markup=kb)
+                    except Exception:
+                        logger.exception(
+                            "Failed to send subscription expiry notification",
+                            extra=log_context(telegram_id=user["telegram_id"], action_source="expiry_loop"),
+                        )
+
+            delete_results: dict[int, bool] = {}
+            for user in delete_snapshots:
+                delete_results[user["id"]] = await xray.remove_client(email=str(user["telegram_id"]))
+                msg = "🗑️ <b>Ваш профиль удален.</b>\n\nВы не продлевали подписку более 7 дней. Для возвращения создайте профиль заново."
+                try:
+                    await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML")
+                except Exception:
+                    logger.exception(
+                        "Failed to send profile deletion notification",
+                        extra=log_context(telegram_id=user["telegram_id"], action_source="expiry_loop"),
+                    )
+
+            async with session_scope(async_session_maker) as session:
+                for user_id, removed in expired_results.items():
+                    if not removed:
+                        continue
+                    user = await session.get(User, user_id)
+                    if user:
+                        user.is_active = False
+
+                for user_id in delete_results:
+                    user = await session.get(User, user_id)
+                    if user:
+                        await delete_user_with_relations(session, user)
         except Exception as exc:
             logger.exception("Expiry Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)

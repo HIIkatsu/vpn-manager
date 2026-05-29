@@ -64,9 +64,9 @@ def get_profile_data(user, webhook_domain: str, traffic_str: str = "0.00 B"):
 async def _fetch_user_traffic(telegram_id: int, session) -> str:
     try:
         xray = XrayManager()
-        stats = await xray.get_live_traffic_stats(reset=True)
+        stats = await xray.get_live_traffic_stats(reset=False)
         live_bytes = stats.get(str(telegram_id), 0)
-        used_bytes = await TrafficStatsService.persist_and_get_total(session, telegram_id, live_bytes)
+        used_bytes = await TrafficStatsService.get_total_with_live(session, telegram_id, live_bytes)
         return format_bytes(used_bytes)
     except Exception:
         return "0.00 B"

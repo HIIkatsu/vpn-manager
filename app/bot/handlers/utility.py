@@ -56,9 +56,9 @@ def build_stats_text(user, used_bytes: int = 0) -> str:
 async def _get_user_traffic(telegram_id: int, session) -> int:
     try:
         xray = XrayManager()
-        stats = await xray.get_live_traffic_stats(reset=True)
+        stats = await xray.get_live_traffic_stats(reset=False)
         live_bytes = stats.get(str(telegram_id), 0)
-        return await TrafficStatsService.persist_and_get_total(session, telegram_id, live_bytes)
+        return await TrafficStatsService.get_total_with_live(session, telegram_id, live_bytes)
     except Exception:
         return 0
 

@@ -12,8 +12,18 @@ from app.services.transaction import session_scope
 security = HTTPBasic()
 
 
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_read_session() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session_maker() as session:
+        yield session
+
+
+async def get_write_session() -> AsyncGenerator[AsyncSession, None]:
     async with session_scope(async_session_maker) as session:
+        yield session
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    async for session in get_write_session():
         yield session
 
 

@@ -25,12 +25,12 @@ class UserService:
             )
             db_session = getattr(self.users, "session", self.users)
             db_session.add(user)
-            await db_session.commit()
+            await db_session.flush()
         else:
             if username and getattr(user, 'username', '') != username:
                 user.username = username
                 db_session = getattr(self.users, "session", self.users)
-                await db_session.commit()
+                await db_session.flush()
         return user
 
     async def set_preferred_os(self, telegram_id: int, preferred_os: str) -> User | None:
@@ -39,7 +39,7 @@ class UserService:
             return None
         user.preferred_os = preferred_os
         db_session = getattr(self.users, "session", self.users)
-        await db_session.commit()
+        await db_session.flush()
         return user
 
     async def get_by_telegram_id(self, telegram_id: int):
