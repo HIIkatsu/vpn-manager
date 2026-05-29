@@ -6,7 +6,7 @@ from decimal import Decimal
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.dependencies.common import get_async_session
+from app.api.dependencies.common import get_write_session
 from app.bot.core import bot
 from app.core.container import get_billing_service
 from app.core.logging_utils import log_context
@@ -22,7 +22,7 @@ rate_limiter = SharedRateLimiter()
 replay_guard = WebhookReplayGuard()
 
 @router.post("/webhook/yookassa")
-async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_async_session)) -> dict:
+async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_write_session)) -> dict:
     yookassa = YooKassaService()
     raw_body = await request.body()
     try:

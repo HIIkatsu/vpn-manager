@@ -11,7 +11,7 @@ import ipaddress
 from urllib.parse import quote
 from datetime import datetime, timezone
 from app.db.models import User
-from app.api.dependencies.common import get_async_session
+from app.api.dependencies.common import get_read_session, get_write_session
 from app.core.settings import settings
 from app.core.security import ip_in_allowlist
 
@@ -31,7 +31,7 @@ def _build_hiddify_deeplink(sub_url: str) -> str:
     return f"hiddify://install-config?url={quote(sub_url, safe='')}"
 
 @router.get("/webhook/sub/{uuid}")
-async def get_subscription(uuid: str, os: str = "android", session: AsyncSession = Depends(get_async_session)):
+async def get_subscription(uuid: str, os: str = "android", session: AsyncSession = Depends(get_read_session)):
     result = await session.execute(select(User).where(User.vless_uuid == uuid))
     user = result.scalars().first()
     if not user or not user.is_active: return Response(content="", status_code=403)
@@ -80,16 +80,15 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
 async def root_instruction(request: Request): return templates.TemplateResponse(request=request, name="setup.html")
 
 @router.get("/cabinet/{uuid}")
-async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depends(get_async_session)):
+async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depends(get_write_session)):
     result = await session.execute(select(User).where(User.vless_uuid == uuid))
     user = result.scalars().first()
     if not user: return Response(content="Профиль не найден", status_code=404)
     user.preferred_os = (request.query_params.get("os") or user.preferred_os or "android").lower()
-    await session.commit()
     return templates.TemplateResponse(request=request, name="cabinet.html", context={"request": request, "user": user, "sub_url": _build_subscription_url(request, user), "hiddify_deeplink": _build_hiddify_deeplink(_build_subscription_url(request, user))})
 
 @router.get("/webhook/sync-nodes-777")
-async def generate_nodes_config(request: Request, session: AsyncSession = Depends(get_async_session)):
+async def generate_nodes_config(request: Request, session: AsyncSession = Depends(get_read_session)):
     auth = request.headers.get("authorization", "")
     sync_token = settings.SYNC_NODES_TOKEN.strip()
     if not sync_token:
@@ -120,7 +119,7 @@ async def generate_nodes_config(request: Request, session: AsyncSession = Depend
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     users = (await session.execute(select(User))).scalars().all()
-    clients = [{"id": str(u.vless_uuid), "flow": "xtls-rprx-vision", "email": str(u.vless_uuid)[:8]} for u in users if getattr(u, 'is_active', False)]
+    clients = [{"id": str(u.vless_uuid), "flow": "xtls-rprx-vision", "email": str(u.telegram_id)} for u in users if getattr(u, 'is_active', False)]
     prv, sid = settings.XRAY_REALITY_PRIVATE_KEY, settings.VLESS_SHORT_ID
     
     config = {
