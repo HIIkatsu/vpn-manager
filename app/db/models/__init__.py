@@ -3,5 +3,6 @@ from app.db.models.payment import Payment
 from app.db.models.pending_action import PendingAction
 from app.db.models.user import User
 from app.db.models.outbox_event import OutboxEvent
+from app.db.models.subscription_notification import SubscriptionNotification
 
-__all__ = ["Base", "User", "Payment", "PendingAction", "OutboxEvent"]
+__all__ = ["Base", "User", "Payment", "PendingAction", "OutboxEvent", "SubscriptionNotification"]

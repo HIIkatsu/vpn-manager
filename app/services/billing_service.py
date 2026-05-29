@@ -144,18 +144,35 @@ class BillingService:
         )
         payment_ids = [p.payment_id for p in pending_payments]
 
-        for pid in payment_ids:
-            remote_payment = await asyncio.wait_for(
-                self.yookassa_service.fetch_remote_payment(pid),
-                timeout=settings.YOOKASSA_REQUEST_TIMEOUT_SECONDS * (settings.YOOKASSA_REQUEST_RETRIES + 2),
-            )
-            if remote_payment.status == "succeeded":
-                activated = await self.activate_payment(pid)
-                if not activated:
-                    self.logger.warning(
-                        "Pending payment compensation failed",
-                        extra=log_context(payment_id=pid, action_source="process_pending"),
-                    )
+        for attempt, pid in enumerate(payment_ids, start=1):
+            try:
+                remote_payment = await asyncio.wait_for(
+                    self.yookassa_service.fetch_remote_payment(pid),
+                    timeout=settings.YOOKASSA_REQUEST_TIMEOUT_SECONDS * (settings.YOOKASSA_REQUEST_RETRIES + 2),
+                )
+                if remote_payment.status == "succeeded":
+                    activated = await self.activate_payment(pid)
+                    if not activated:
+                        self.logger.warning(
+                            "Pending payment compensation failed",
+                            extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
+                        )
+                elif remote_payment.status in {"canceled", "failed"}:
+                    payment = await self.payments.get_by_payment_id_for_update(pid)
+                    if payment and payment.status in {"pending", "processing"}:
+                        payment.status = "failed"
+                        payment.processing_started_at = None
+                        await self.session.flush()
+                        self.logger.warning(
+                            "Pending payment marked failed from remote status",
+                            extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
+                        )
+            except Exception:
+                self.logger.exception(
+                    "Pending payment compensation item failed",
+                    extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
+                )
+                continue
 
     async def notify_expiring_subscriptions(self, days_before: int = 3) -> None:
         expiring_users = await self.users.get_expiring_in_days(days_before)
@@ -169,4 +186,8 @@ class BillingService:
                     ),
                 )
             except Exception:
+                self.logger.exception(
+                    "Failed to send expiring subscription notification",
+                    extra=log_context(telegram_id=user.telegram_id, action_source="notify_expiring_subscriptions"),
+                )
                 continue

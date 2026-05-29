@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from app.bot.core import bot, dp
 from app.bot.handlers import router as _router  # explicit import to guarantee handler registration
@@ -10,6 +11,8 @@ def _ensure_handlers_loaded() -> None:
     # do not accidentally strip router import in runtime entrypoint.
     _ = _router
 
+
+logger = logging.getLogger(__name__)
 
 async def run_bot_polling() -> None:
     _ensure_handlers_loaded()
@@ -27,7 +30,7 @@ def main() -> None:
     try:
         asyncio.run(run_bot_polling())
     except KeyboardInterrupt:
-        pass
+        logger.info("Shutdown requested by keyboard interrupt")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import subprocess
 from datetime import datetime, timedelta, timezone
+from html import escape
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response
@@ -14,6 +16,7 @@ from sqlalchemy.orm import joinedload
 from app.api.dependencies.common import get_read_session, get_write_session, get_current_admin
 from app.api.utils.subscription import format_bytes
 from app.core.logging_utils import log_context
+from app.core.settings import settings
 from app.db.models import PendingAction, User
 from app.db.database import async_session_maker
 from app.services.transaction import session_scope
@@ -284,32 +287,55 @@ async def admin_logout():
 
 @router.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit_dashboard(request: Request, admin=Depends(get_current_admin)):
-    import subprocess
     nodes = {
         "🇫🇮 Финляндия (Главный)": "127.0.0.1",
-        "🇩🇪 Германия": "132.243.194.119",
-        "🇳🇱 Нидерланды": "194.50.94.177",
-        "🇷🇺 Транзит (РФ)": "132.243.230.173"
+        "🇩🇪 Германия": settings.GERMANY_PUBLIC_IP,
+        "🇳🇱 Нидерланды": settings.NETHERLANDS_PUBLIC_IP,
+        "🇷🇺 Транзит (РФ)": settings.RUSSIA_BALANCER_IP,
     }
-    
-    results = {}
-    for name, ip in nodes.items():
+
+    async def run_command(args: list[str], timeout: int) -> str:
+        return await asyncio.to_thread(
+            subprocess.check_output,
+            args,
+            timeout=timeout,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+
+    async def audit_node(ip: str) -> dict[str, str]:
         try:
             if ip == "127.0.0.1":
-                status = subprocess.check_output(["systemctl", "is-active", "xray"], timeout=2).decode().strip()
-                logs = subprocess.check_output(["journalctl", "-u", "xray", "-p", "3", "-n", "15", "--no-pager"], timeout=3).decode()
+                status = (await run_command(["systemctl", "is-active", "xray"], timeout=2)).strip()
+                logs = await run_command(["journalctl", "-u", "xray", "-p", "3", "-n", "15", "--no-pager"], timeout=3)
             else:
-                cmd_status = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=2 -o PasswordAuthentication=no root@{ip} 'systemctl is-active xray'"
-                status = subprocess.check_output(cmd_status, shell=True).decode().strip()
-                
-                cmd_logs = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -o PasswordAuthentication=no root@{ip} 'journalctl -u xray -p 3 -n 15 --no-pager'"
-                logs = subprocess.check_output(cmd_logs, shell=True).decode()
-                
-            results[name] = {"status": status, "logs": logs.strip() if logs.strip() else "✅ Ошибок нет. Xray работает штатно."}
+                ssh_base = [
+                    "ssh",
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "ConnectTimeout=3",
+                    "-o", "PasswordAuthentication=no",
+                    f"root@{ip}",
+                ]
+                status = (await run_command([*ssh_base, "systemctl is-active xray"], timeout=5)).strip()
+                logs = await run_command([*ssh_base, "journalctl -u xray -p 3 -n 15 --no-pager"], timeout=6)
+
+            clean_logs = logs.strip() if logs.strip() else "✅ Ошибок нет. Xray работает штатно."
+            return {"status": status, "logs": clean_logs}
         except subprocess.TimeoutExpired:
-            results[name] = {"status": "timeout", "logs": "⚠️ Сервер не ответил вовремя. Возможно, завис."}
-        except subprocess.CalledProcessError as e:
-            results[name] = {"status": "error", "logs": f"❌ Ошибка подключения. Код: {e.returncode}"}
+            logger.warning(
+                "Admin audit node timeout",
+                extra=log_context(endpoint="/admin/audit", action_source="admin_audit"),
+            )
+            return {"status": "timeout", "logs": "⚠️ Сервер не ответил вовремя. Возможно, завис."}
+        except subprocess.CalledProcessError as exc:
+            logger.warning(
+                "Admin audit command failed",
+                extra=log_context(endpoint="/admin/audit", action_source="admin_audit"),
+            )
+            return {"status": "error", "logs": f"❌ Ошибка подключения. Код: {exc.returncode}"}
+
+    audit_results = await asyncio.gather(*(audit_node(ip) for ip in nodes.values()))
+    results = dict(zip(nodes.keys(), audit_results))
 
     html = """
     <!DOCTYPE html>
@@ -340,10 +366,14 @@ async def admin_audit_dashboard(request: Request, admin=Depends(get_current_admi
         <div class="grid">
     """
     for name, data in results.items():
-        st = data['status']
+        st = data["status"]
         badge_class = "bg-active" if st == "active" else ("bg-timeout" if st == "timeout" else "bg-error")
         display_status = "РАБОТАЕТ" if st == "active" else ("ТАЙМАУТ" if st == "timeout" else "ОШИБКА")
-        html += f'<div class="card"><div class="header"><div class="title">{name}</div><div class="badge {badge_class}">{display_status}</div></div><pre>{data["logs"]}</pre></div>'
-        
+        html += (
+            f'<div class="card"><div class="header"><div class="title">{escape(name)}</div>'
+            f'<div class="badge {badge_class}">{display_status}</div></div>'
+            f'<pre>{escape(data["logs"])}</pre></div>'
+        )
+
     html += "</div></body></html>"
     return HTMLResponse(content=html)
