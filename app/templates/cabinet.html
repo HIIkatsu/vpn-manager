@@ -1,263 +1,229 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" class="scroll-smooth">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AnKo VPN Smart | Личный кабинет</title>
-    <style>
-        :root {
-            --bg: #0f172a; --card-bg: #1e293b; --card-inner: rgba(0, 0, 0, 0.25);
-            --primary: #38bdf8; --primary-glow: rgba(56, 189, 248, 0.4);
-            --accent: #818cf8; --text-main: #f8fafc; --text-muted: #94a3b8;
-            --success: #10b981; --border: rgba(255, 255, 255, 0.08);
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Личный кабинет | AnKo Smart VPN</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5' },
+            dark: { 800: '#1e293b', 900: '#0f172a' }
+          },
+          keyframes: {
+            shimmer: { '100%': { transform: 'translateX(200%)' } }
+          },
+          animation: { shimmer: 'shimmer 2.5s infinite' }
         }
-        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
-        
-        body { margin: 0; background-color: var(--bg); color: var(--text-main); display: flex; flex-direction: column; align-items: center; min-height: 100vh; position: relative; overflow-x: hidden; }
-        
-        body::before { content: ""; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -2; background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px); background-size: 24px 24px; }
-        body::after { content: ""; position: fixed; top: -20%; left: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(56, 189, 248, 0.12) 0%, transparent 60%); z-index: -1; border-radius: 50%; pointer-events: none; }
-        
-        .container { max-width: 440px; width: 100%; padding: 20px; padding-top: 10px; }
-        
-        /* Шапка */
-        .navbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-        .logo { font-size: 22px; font-weight: 800; background: linear-gradient(135deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
-        .avatar { width: 44px; height: 44px; background: linear-gradient(135deg, var(--accent), var(--primary)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px; color: #fff; cursor: pointer; border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.2s; }
-        .avatar:active { transform: scale(0.9); }
-
-        /* Вьюпорт страниц */
-        .page-view { display: none; animation: fadeIn 0.3s ease; }
-        .page-view.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Карточка на главной */
-        .card { background: var(--card-bg); border-radius: 24px; padding: 28px 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 1px solid var(--border); text-align: center; position: relative; overflow: hidden; }
-        
-        .badge { display: inline-block; background: rgba(16, 185, 129, 0.15); color: var(--success); padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase; border: 1px solid rgba(16, 185, 129, 0.3); }
-        .sub-date { display: block; font-size: 14px; color: var(--text-muted); margin-bottom: 24px; }
-        .sub-date b { color: var(--text-main); }
-
-        /* Безлимитный трафик (Анимация волны) */
-        .stats-block { background: var(--card-inner); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 16px; padding: 20px; margin-bottom: 25px; position: relative; overflow: hidden; }
-        .stats-block::before { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent), var(--primary)); background-size: 200% 100%; animation: gradientFlow 3s linear infinite; }
-        .traffic-title { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-        .traffic-value { font-size: 28px; font-weight: 800; color: var(--text-main); margin-bottom: 4px; }
-        .traffic-limit { font-size: 14px; color: var(--success); font-weight: 600; }
-        @keyframes gradientFlow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-        /* Кнопки на главной */
-        .btn-main { display: block; width: 100%; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; text-decoration: none; padding: 18px; border-radius: 16px; font-size: 17px; font-weight: 700; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 8px 25px var(--primary-glow); margin-bottom: 12px; border: none; cursor: pointer; text-align: center; }
-        .btn-main:active { transform: scale(0.97); box-shadow: 0 4px 15px var(--primary-glow); }
-        .btn-secondary { display: block; width: 100%; background: transparent; color: var(--primary); padding: 16px; border-radius: 16px; font-size: 15px; font-weight: 600; transition: 0.2s; border: 1px solid rgba(56, 189, 248, 0.25); cursor: pointer; }
-        .btn-secondary:active { background: rgba(56, 189, 248, 0.08); transform: scale(0.98); }
-        .btn-secondary.copied { background: rgba(16, 185, 129, 0.1); color: var(--success); border-color: var(--success); }
-
-        /* Выезжающая шторка (Drawer) */
-        .drawer-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 99; opacity: 0; pointer-events: none; transition: 0.3s; }
-        .drawer-overlay.active { opacity: 1; pointer-events: auto; }
-        .drawer { position: fixed; top: 0; right: -320px; width: 300px; height: 100vh; background: var(--card-bg); z-index: 100; box-shadow: -10px 0 30px rgba(0,0,0,0.5); transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
-        .drawer.active { right: 0; }
-        .drawer-header { padding: 25px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .drawer-header h2 { margin: 0; font-size: 18px; color: var(--text-main); }
-        .drawer-close { background: none; border: none; color: var(--text-muted); font-size: 28px; cursor: pointer; padding: 0; line-height: 1; }
-        
-        /* Меню в шторке */
-        .drawer-menu { padding: 15px 0; overflow-y: auto; }
-        .menu-item { padding: 16px 20px; display: flex; align-items: center; gap: 15px; color: var(--text-main); font-size: 16px; font-weight: 500; cursor: pointer; transition: background 0.2s; border-left: 3px solid transparent; }
-        .menu-item:hover, .menu-item:active { background: var(--card-inner); border-left-color: var(--primary); }
-        .menu-item .icon { font-size: 20px; width: 24px; text-align: center; }
-        
-        .drawer-divider { height: 1px; background: var(--border); margin: 10px 20px; }
-        .os-selector { padding: 10px 20px; }
-        .os-selector h4 { margin: 0 0 10px 0; font-size: 13px; color: var(--text-muted); text-transform: uppercase; }
-        .os-radio { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; color: var(--text-main); font-size: 15px; cursor: pointer; }
-        .os-radio input { accent-color: var(--primary); transform: scale(1.2); cursor: pointer; }
-
-        /* Внутренние страницы (Тарифы, Статистика) */
-        .page-header { display: flex; align-items: center; gap: 15px; margin-bottom: 25px; }
-        .back-btn { background: var(--card-inner); border: 1px solid var(--border); color: var(--text-main); width: 40px; height: 40px; border-radius: 12px; display: flex; justify-content: center; align-items: center; font-size: 18px; cursor: pointer; transition: 0.2s; }
-        .back-btn:active { transform: scale(0.9); }
-        .page-header h2 { margin: 0; font-size: 20px; }
-
-        .tariff-card { background: linear-gradient(145deg, var(--card-inner), rgba(255,255,255,0.02)); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; backdrop-filter: blur(10px); }
-        .tariff-info h3 { margin: 0 0 6px 0; font-size: 17px; color: var(--text-main); }
-        .tariff-info p { margin: 0; font-size: 13px; color: var(--text-muted); }
-        .btn-pay { background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; border: none; padding: 12px 20px; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none; box-shadow: 0 4px 15px var(--primary-glow); transition: 0.2s; }
-        .btn-pay:active { transform: scale(0.95); }
-
-        .stat-row { display: flex; justify-content: space-between; padding: 16px; background: var(--card-inner); border-radius: 16px; border: 1px solid var(--border); margin-bottom: 12px; font-size: 15px; }
-        .stat-row span { color: var(--text-muted); }
-        .stat-row b { color: var(--text-main); font-weight: 600; }
-
-        /* Тост успеха */
-        .toast { position: fixed; top: -100px; left: 50%; transform: translateX(-50%); background: rgba(16, 185, 129, 0.9); color: white; padding: 16px 24px; border-radius: 16px; font-weight: 600; box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4); backdrop-filter: blur(10px); z-index: 1000; transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1); display: flex; align-items: center; gap: 10px; border: 1px solid rgba(255,255,255,0.2); }
-        .toast.show { top: 20px; }
-    </style>
+      }
+    }
+  </script>
 </head>
-<body>
+<body class="bg-dark-900 text-slate-200 min-h-screen font-sans selection:bg-brand-500 selection:text-white">
 
-<div id="successToast" class="toast">
-    <span style="font-size: 20px;">✅</span> Оплата успешно завершена!
-</div>
-
-<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
-
-<div class="drawer" id="drawer">
-    <div class="drawer-header">
-        <h2>Меню кабинета</h2>
-        <button class="drawer-close" onclick="closeDrawer()">×</button>
-    </div>
-    <div class="drawer-menu">
-        <div class="menu-item" onclick="navigate('pay')">
-            <span class="icon">💳</span> Продлить подписку
+  <nav class="bg-dark-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-bold text-white shadow-lg shadow-brand-500/30">
+          A
         </div>
-        <div class="menu-item" onclick="navigate('stats')">
-            <span class="icon">📊</span> Расширенная статистика
-        </div>
-        <div class="drawer-divider"></div>
-        <div class="os-selector">
-            <h4>Настройка ОС профиля</h4>
-            <label class="os-radio">iPhone / iOS <input type="radio" name="os" value="ios" {% if os_name == 'ios' %}checked{% endif %} onchange="changeOS('ios')"></label>
-            <label class="os-radio">Android <input type="radio" name="os" value="android" {% if os_name == 'android' %}checked{% endif %} onchange="changeOS('android')"></label>
-            <label class="os-radio">Windows <input type="radio" name="os" value="windows" {% if os_name == 'windows' %}checked{% endif %} onchange="changeOS('windows')"></label>
-            <label class="os-radio">macOS <input type="radio" name="os" value="mac" {% if os_name == 'mac' %}checked{% endif %} onchange="changeOS('mac')"></label>
-        </div>
+        <span class="font-bold text-xl tracking-tight text-white">AnKo Smart</span>
+      </div>
+      <div>
+        {% if user.is_active %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Подписка активна
+          </span>
+        {% else %}
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Нет доступа
+          </span>
+        {% endif %}
+      </div>
     </div>
-</div>
+  </nav>
 
-<div class="container">
-    <div class="navbar">
-        <div class="logo">AnKo VPN Smart</div>
-        <div class="avatar" onclick="openDrawer()">{{ user.username[0] | upper if user.username else 'U' }}</div>
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    
+    <div class="relative bg-gradient-to-br from-brand-600/10 to-dark-800 rounded-3xl p-6 md:p-10 border border-brand-500/20 shadow-2xl shadow-brand-500/10 overflow-hidden">
+      <i class="fa-solid fa-microchip absolute -right-10 -bottom-10 text-[200px] text-brand-500/5 rotate-12"></i>
+
+      <div class="relative z-10 text-center mb-8">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-semibold mb-4 border border-brand-500/20">
+          <i class="fa-solid fa-microchip"></i> Smart Routing Engine
+        </div>
+        <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">AnKo <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-indigo-300">Smart</span> VPN</h1>
+      </div>
+
+      <div class="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-5xl mx-auto">
+        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
+          <i class="fa-solid fa-shield-cat text-brand-400 text-2xl mb-3"></i>
+          <div class="text-white font-semibold mb-1">Пробивает всё</div>
+          <div class="text-slate-400 text-xs leading-relaxed">Автоматический обход ТСПУ блокировок. Инста, Ютуб и Discord работают без сбоев.</div>
+        </div>
+        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
+          <i class="fa-solid fa-robot text-brand-400 text-2xl mb-3"></i>
+          <div class="text-white font-semibold mb-1">Доступ к ИИ</div>
+          <div class="text-slate-400 text-xs leading-relaxed">Чистые IPv6 адреса. Google, ChatGPT и западные антифроды пускают без капчи и банов.</div>
+        </div>
+        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
+          <i class="fa-solid fa-building-columns text-brand-400 text-2xl mb-3"></i>
+          <div class="text-white font-semibold mb-1">Свои сервисы</div>
+          <div class="text-slate-400 text-xs leading-relaxed">Сбер, Госуслуги и Кинопоиск открываются напрямую с вашей реальной скоростью.</div>
+        </div>
+      </div>
     </div>
 
-    <div id="page-main" class="page-view active">
-        <div class="card">
-            <div class="badge">Статус: Подключено</div>
-            <span class="sub-date">Подписка до: <b>{{ user.sub_end_date.strftime('%d.%m.%Y') if user.sub_end_date else 'Бессрочно' }}</b></span>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-dark-800 rounded-2xl p-6 border border-slate-700/50 relative overflow-hidden group flex flex-col justify-center">
+        <div class="absolute -right-6 -top-6 text-slate-700/30 group-hover:text-slate-700/50 transition-colors">
+          <i class="fa-solid fa-calendar-check text-8xl"></i>
+        </div>
+        <h3 class="text-slate-400 text-sm font-medium mb-1 relative z-10">Осталось дней</h3>
+        <div class="text-3xl font-bold text-white relative z-10 mb-2">{{ days_left }}</div>
+        <div class="text-xs text-slate-500 relative z-10">Активно до {{ end_date_str }}</div>
+      </div>
+      
+      <div class="bg-dark-800 rounded-2xl p-6 border border-slate-700/50 relative overflow-hidden group">
+        <div class="absolute -right-6 -top-6 text-slate-700/30 group-hover:text-slate-700/50 transition-colors">
+          <i class="fa-solid fa-server text-8xl"></i>
+        </div>
+        <div class="relative z-10 flex justify-between items-end mb-3">
+          <div>
+            <h3 class="text-slate-400 text-sm font-medium mb-1">Расход трафика</h3>
+            <div class="text-3xl font-bold text-white">{{ formatted_traffic }}</div>
+          </div>
+          <div class="text-right">
+            <div class="text-brand-400 font-bold text-lg">{{ traffic_percent }}%</div>
+            <div class="text-xs text-slate-500">из 1 ТБ</div>
+          </div>
+        </div>
+        <div class="relative z-10 w-full bg-slate-900 rounded-full h-3 mb-2 overflow-hidden border border-slate-700/50">
+          <div class="bg-gradient-to-r from-brand-600 to-brand-400 h-full rounded-full relative overflow-hidden transition-all duration-1000" style="width: {{ traffic_percent }}%">
+            <div class="absolute top-0 left-0 bottom-0 -translate-x-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.25)_50%,transparent_100%)] w-1/2 animate-shimmer"></div>
+          </div>
+        </div>
+        <div class="relative z-10 text-xs text-slate-500 text-right">Обновляется автоматически</div>
+      </div>
+    </div>
 
-            {% set used_gb = (user.traffic_total_bytes / 1073741824)|round(1) if user.traffic_total_bytes else 0.0 %}
-            <div class="stats-block">
-                <div class="traffic-title">Потрачено трафика</div>
-                <div class="traffic-value">{{ used_gb }} ГБ</div>
-                <div class="traffic-limit">⚡ Лимит: БЕЗЛИМИТ</div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="lg:col-span-2 space-y-8">
+        <section class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-xl">
+          <h2 class="text-2xl font-bold text-white mb-6"><i class="fa-solid fa-bolt text-brand-400 mr-2"></i> Быстрое подключение</h2>
+          
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-400 mb-3">1. Выберите ваше устройство:</label>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {% set platforms = [
+                ('android', 'Android', 'fa-android'), 
+                ('ios', 'iOS', 'fa-apple'), 
+                ('windows', 'Windows', 'fa-windows'), 
+                ('macos', 'macOS', 'fa-apple'), 
+                ('linux', 'Linux', 'fa-linux'),
+                ('router', 'Роутеры / TV', 'fa-network-wired')
+              ] %}
+              {% for pid, label, icon in platforms %}
+                <a href="/cabinet/{{ user.vless_uuid }}?os={{ pid }}" 
+                   class="flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all duration-200 text-xs font-medium
+                   {{ 'bg-brand-500/10 border-brand-500 text-brand-400' if os_name == pid else 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-700/50' }}">
+                  <i class="fa-brands {{ icon }} text-lg"></i> {{ label }}
+                </a>
+              {% endfor %}
             </div>
+          </div>
 
-            <a href="{{ hiddify_deeplink }}" class="btn-main">🚀 Подключить в 1 клик</a>
-            <button id="copyBtn" onclick="copySubscription()" class="btn-secondary">Скопировать ссылку подписки</button>
-        </div>
-    </div>
-
-    <div id="page-pay" class="page-view">
-        <div class="page-header">
-            <button class="back-btn" onclick="navigate('main')">←</button>
-            <h2>Продлить подписку</h2>
-        </div>
-        <div class="tariff-card">
-            <div class="tariff-info">
-                <h3>Тест-драйв</h3>
-                <p>1 месяц • Безлимит</p>
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-400 mb-3">2. Импортируйте профиль:</label>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <a href="{{ hiddify_deeplink }}" class="flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold shadow-lg shadow-brand-500/25 transition-all active:scale-95">
+                <i class="fa-solid fa-paper-plane"></i> В один клик (Hiddify)
+              </a>
+              <button onclick="copySub()" class="flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium transition-all active:scale-95 border border-slate-600">
+                <i class="fa-regular fa-copy"></i> Копировать ссылку
+              </button>
             </div>
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/100" class="btn-pay">100 ₽</a>
-        </div>
-        <div class="tariff-card">
-            <div class="tariff-info">
-                <h3>Оптимальный</h3>
-                <p>3 месяца • Безлимит</p>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-slate-400 mb-2">Ваша персональная ссылка подписки:</label>
+            <div class="relative">
+              <input id="subUrl" class="w-full rounded-xl bg-dark-900 border border-slate-700 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none focus:border-brand-500 transition-colors" readonly value="{{ sub_url }}" />
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 text-brand-500 opacity-50">
+                <i class="fa-solid fa-link"></i>
+              </div>
             </div>
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/250" class="btn-pay">250 ₽</a>
-        </div>
-        <div class="tariff-card">
-            <div class="tariff-info">
-                <h3>Год спокойствия</h3>
-                <p>12 месяцев • Безлимит</p>
-            </div>
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/900" class="btn-pay">900 ₽</a>
-        </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="space-y-8">
+        <section class="bg-dark-800 rounded-3xl p-6 border border-slate-700/50 shadow-xl">
+          <h2 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-wallet text-emerald-400 mr-2"></i> Продление</h2>
+          <p class="text-slate-400 text-sm mb-6">Безопасная оплата через СБП, Tinkoff или карты РФ.</p>
+
+          <div class="space-y-3">
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/100" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200">
+              <div class="flex justify-between items-center">
+                <div>
+                  <div class="font-medium text-white">1 месяц</div>
+                  <div class="text-sm text-slate-400">Базовый доступ</div>
+                </div>
+                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">100 ₽</div>
+              </div>
+            </a>
+
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/250" class="group block relative rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500 p-4 transition-all duration-200">
+              <div class="absolute -top-2.5 right-4 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">Популярно</div>
+              <div class="flex justify-between items-center">
+                <div>
+                  <div class="font-medium text-white">3 месяца</div>
+                  <div class="text-sm text-emerald-400/80">Выгода ~17%</div>
+                </div>
+                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">250 ₽</div>
+              </div>
+            </a>
+
+            <a href="/cabinet/{{ user.vless_uuid }}/pay/900" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200">
+              <div class="flex justify-between items-center">
+                <div>
+                  <div class="font-medium text-white">1 год</div>
+                  <div class="text-sm text-slate-400">Максимальная выгода</div>
+                </div>
+                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">900 ₽</div>
+              </div>
+            </a>
+          </div>
+          
+          <div class="mt-6 flex items-center justify-center gap-2 text-slate-500 text-xs">
+            <i class="fa-solid fa-lock"></i> Защищено протоколами ЮKassa
+          </div>
+        </section>
+      </div>
     </div>
+  </main>
 
-    <div id="page-stats" class="page-view">
-        <div class="page-header">
-            <button class="back-btn" onclick="navigate('main')">←</button>
-            <h2>Статистика</h2>
-        </div>
-        <div class="stat-row">
-            <span>Расход трафика</span>
-            <b>{{ used_gb }} ГБ</b>
-        </div>
-        <div class="stat-row">
-            <span>Лимит скорости</span>
-            <b style="color: var(--success);">Снято (MAX)</b>
-        </div>
-        <div class="stat-row">
-            <span>Текущее устройство</span>
-            <b style="text-transform: uppercase;">{{ os_name }}</b>
-        </div>
-        <div class="stat-row">
-            <span>Обход DPI (ТСПУ)</span>
-            <b style="color: var(--success);">Активен</b>
-        </div>
-    </div>
-
-</div>
-
-<script>
-    // Логика шторки
-    const drawer = document.getElementById('drawer');
-    const overlay = document.getElementById('drawerOverlay');
-
-    function openDrawer() {
-        drawer.classList.add('active');
-        overlay.classList.add('active');
+  <script>
+    function copySub() {
+      const el = document.getElementById('subUrl');
+      el.select();
+      el.setSelectionRange(0, 99999); 
+      navigator.clipboard.writeText(el.value).then(() => {
+        const btn = event.target.closest('button');
+        if (!btn) return;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Скопировано!';
+        btn.classList.add('border-emerald-500', 'text-emerald-400');
+        setTimeout(() => {
+          btn.innerHTML = originalHtml;
+          btn.classList.remove('border-emerald-500', 'text-emerald-400');
+        }, 2000);
+      });
     }
-
-    function closeDrawer() {
-        drawer.classList.remove('active');
-        overlay.classList.remove('active');
-    }
-
-    // Навигация (SPA)
-    function navigate(pageId) {
-        closeDrawer();
-        document.querySelectorAll('.page-view').forEach(p => p.classList.remove('active'));
-        document.getElementById('page-' + pageId).classList.add('active');
-    }
-
-    // Смена ОС
-    function changeOS(os) {
-        const urlParams = new URLSearchParams(window.location.search);
-        urlParams.set('os', os);
-        window.location.search = urlParams.toString();
-    }
-
-    // Копирование (без смайла)
-    function copySubscription() {
-        const link = "{{ sub_url }}";
-        navigator.clipboard.writeText(link).then(() => {
-            const btn = document.getElementById('copyBtn');
-            btn.classList.add('copied');
-            btn.innerText = "Ссылка скопирована (Вставьте в Hiddify)";
-            setTimeout(() => {
-                btn.classList.remove('copied');
-                btn.innerText = "Скопировать ссылку подписки";
-            }, 3000);
-        }).catch(err => alert("Ошибка копирования."));
-    }
-
-    // Проверка успешной оплаты из URL
-    window.onload = () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('payment') === 'success') {
-            const toast = document.getElementById('successToast');
-            toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 4000);
-            
-            // Очищаем URL от параметра, чтобы не спамить тостом при перезагрузке
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-    };
-</script>
-
+  </script>
 </body>
 </html>

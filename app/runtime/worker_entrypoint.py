@@ -1,14 +1,20 @@
 import asyncio
 
-from app.runtime.workers import auto_expiry_loop
+from app.runtime.workers import outbox_loop, traffic_stats_loop, expiry_loop, notification_loop
 from app.services.xray_manager import XrayManager
 
 
 async def run_workers() -> None:
     xray_manager = XrayManager()
     await xray_manager.initialize()
+    
+    # Запускаем все три микро-таски конкурентно
     try:
-        await auto_expiry_loop()
+        await asyncio.gather(
+            outbox_loop(),
+            traffic_stats_loop(),
+            expiry_loop(), notification_loop()
+        )
     finally:
         await XrayManager.close_channel()
 

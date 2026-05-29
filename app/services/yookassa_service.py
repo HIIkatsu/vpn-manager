@@ -8,7 +8,7 @@ from decimal import Decimal
 try:
     from yookassa import Configuration, Payment as YooPayment
     from yookassa.domain.notification import WebhookNotificationFactory
-except Exception:  # pragma: no cover - optional dependency in tests
+except Exception:
     Configuration = None
     YooPayment = None
     WebhookNotificationFactory = None
@@ -46,10 +46,8 @@ class YooKassaService:
         authorization_header: str | None,
         webhook_secret_header: str | None,
     ) -> bool:
-        # 1) Native YooKassa Basic Auth (best when header is preserved)
         if self._is_valid_basic_auth(authorization_header):
             return True
-        # 2) Hardened dedicated webhook secret header, constant-time compare
         return self._is_valid_webhook_secret(webhook_secret_header)
 
     def parse_notification(self, payload: dict):
@@ -85,18 +83,30 @@ class YooKassaService:
                     await asyncio.sleep(0.2 * (2 ** attempt))
         raise RuntimeError(f"YooKassa find_one failed after retries for payment {payment_id}") from last_error
 
-    async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float, return_url: str = "tg://resolve?domain=NeuroVPN_AI_bot") -> str:
+    async def create_payment(self, payments: PaymentRepository, user_id: int, amount: float, return_url: str = None) -> str:
         if YooPayment is None:
             raise RuntimeError("yookassa SDK is not installed")
+        
+        if not return_url:
+            return_url = "tg://resolve?domain=NeuroVPN_AI_bot"
+
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},
             "capture": True,
             "confirmation": {"type": "redirect", "return_url": return_url},
-            "description": "Продление VPN-подписки на 30 дней",
+            "description": "Продление VPN-подписки",
             "metadata": {"user_id": str(user_id)},
         }
         payment = await asyncio.to_thread(YooPayment.create, payment_data, str(uuid.uuid4()))
-        await payments.add(
-            Payment(user_id=user_id, payment_id=payment.id, amount=Decimal(str(amount)), status="pending")
-        )
+        
+        new_payment = Payment(user_id=user_id, payment_id=payment.id, amount=Decimal(str(amount)), status="pending")
+        
+        try:
+            res = payments.add(new_payment)
+            if asyncio.iscoroutine(res):
+                await res
+        except Exception:
+            if hasattr(payments, 'session'):
+                payments.session.add(new_payment)
+                
         return payment.confirmation.confirmation_url

@@ -247,3 +247,69 @@ async def admin_pending_cancel(
 @router.get("/admin/logout")
 async def admin_logout():
     return Response(status_code=401, headers={"WWW-Authenticate": "Basic"})
+
+@router.get("/admin/audit", response_class=HTMLResponse)
+async def admin_audit_dashboard(request: Request, admin=Depends(get_current_admin)):
+    import subprocess
+    nodes = {
+        "🇫🇮 Финляндия (Главный)": "127.0.0.1",
+        "🇩🇪 Германия": "132.243.194.119",
+        "🇳🇱 Нидерланды": "194.50.94.177",
+        "🇷🇺 Транзит (РФ)": "132.243.230.173"
+    }
+    
+    results = {}
+    for name, ip in nodes.items():
+        try:
+            if ip == "127.0.0.1":
+                status = subprocess.check_output(["systemctl", "is-active", "xray"], timeout=2).decode().strip()
+                logs = subprocess.check_output(["journalctl", "-u", "xray", "-p", "3", "-n", "15", "--no-pager"], timeout=3).decode()
+            else:
+                cmd_status = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=2 -o PasswordAuthentication=no root@{ip} 'systemctl is-active xray'"
+                status = subprocess.check_output(cmd_status, shell=True).decode().strip()
+                
+                cmd_logs = f"ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -o PasswordAuthentication=no root@{ip} 'journalctl -u xray -p 3 -n 15 --no-pager'"
+                logs = subprocess.check_output(cmd_logs, shell=True).decode()
+                
+            results[name] = {"status": status, "logs": logs.strip() if logs.strip() else "✅ Ошибок нет. Xray работает штатно."}
+        except subprocess.TimeoutExpired:
+            results[name] = {"status": "timeout", "logs": "⚠️ Сервер не ответил вовремя. Возможно, завис."}
+        except subprocess.CalledProcessError as e:
+            results[name] = {"status": "error", "logs": f"❌ Ошибка подключения. Код: {e.returncode}"}
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Аудит Сети | AnKo VPN</title>
+        <style>
+            body { background-color: #0f172a; color: #cbd5e1; font-family: system-ui, -apple-system, sans-serif; padding: 20px; margin: 0; }
+            h1 { color: #f8fafc; font-size: 24px; margin-bottom: 20px; }
+            .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+            .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px; }
+            .title { font-size: 18px; font-weight: bold; color: #f8fafc; }
+            .badge { padding: 4px 10px; border-radius: 20px; font-size: 14px; font-weight: bold; text-transform: uppercase; }
+            .bg-active { background: #10b981; color: #022c22; }
+            .bg-error { background: #ef4444; color: #450a0a; }
+            .bg-timeout { background: #f59e0b; color: #451a03; }
+            pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 13px; color: #94a3b8; white-space: pre-wrap; word-break: break-all; }
+            .btn-back { display: inline-block; background: #3b82f6; color: white; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; margin-bottom: 20px; }
+            .btn-back:hover { background: #2563eb; }
+        </style>
+    </head>
+    <body>
+        <a href="/admin" class="btn-back">← Назад в Админку</a>
+        <h1>📡 Состояние серверов и логи ошибок</h1>
+        <div class="grid">
+    """
+    for name, data in results.items():
+        st = data['status']
+        badge_class = "bg-active" if st == "active" else ("bg-timeout" if st == "timeout" else "bg-error")
+        display_status = "РАБОТАЕТ" if st == "active" else ("ТАЙМАУТ" if st == "timeout" else "ОШИБКА")
+        html += f'<div class="card"><div class="header"><div class="title">{name}</div><div class="badge {badge_class}">{display_status}</div></div><pre>{data["logs"]}</pre></div>'
+        
+    html += "</div></body></html>"
+    return HTMLResponse(content=html)

@@ -38,8 +38,15 @@ class BillingService:
         self.logger = logging.getLogger(__name__)
         self._processing_lock = DistributedLock()
 
-    async def create_subscription_payment(self, user_id: int, amount: float) -> str:
-        url = await self.yookassa_service.create_payment(self.payments, user_id, amount)
+    async def create_subscription_payment(self, user_id: int, amount: float, return_url: str = None) -> str:
+        import inspect
+        sig = inspect.signature(self.yookassa_service.create_payment)
+        
+        if 'return_url' in sig.parameters:
+            url = await self.yookassa_service.create_payment(self.payments, user_id, amount, return_url=return_url)
+        else:
+            url = await self.yookassa_service.create_payment(self.payments, user_id, amount)
+            
         await self.session.flush()
         return url
 
@@ -114,6 +121,7 @@ class BillingService:
         if recovered:
             await self.session.flush()
         return recovered
+
     async def process_pending(self) -> None:
         if not self._processing_lock.acquire("billing:process_pending", ttl_seconds=60):
             self.logger.info(
@@ -148,7 +156,6 @@ class BillingService:
                         "Pending payment compensation failed",
                         extra=log_context(payment_id=pid, action_source="process_pending"),
                     )
-
 
     async def notify_expiring_subscriptions(self, days_before: int = 3) -> None:
         expiring_users = await self.users.get_expiring_in_days(days_before)
