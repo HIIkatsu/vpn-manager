@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response, HTTPException
+from fastapi import APIRouter, Depends, Request, Response, HTTPException, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,11 +7,13 @@ import base64
 import math
 import json
 import hmac
+import ipaddress
 from urllib.parse import quote
 from datetime import datetime, timezone
 from app.db.models import User
 from app.api.dependencies.common import get_async_session
 from app.core.settings import settings
+from app.core.security import ip_in_allowlist
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -40,8 +42,8 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
     host_nl = "194.50.94.177"
     host_ru = "132.243.230.173"
     
-    pbk = getattr(settings, 'VLESS_PUBLIC_KEY', 'sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI')
-    sid = getattr(settings, 'VLESS_SHORT_ID', '45b6b57266629592')
+    pbk = settings.VLESS_PUBLIC_KEY
+    sid = settings.VLESS_SHORT_ID
     fp = "safari" if os.lower().strip() in ["ios", "mac", "apple"] else "chrome"
     
     def make_tcp(host, name, target_port=443, custom_sni="www.samsung.com", custom_sid=sid):
@@ -88,18 +90,38 @@ async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depen
 
 @router.get("/webhook/sync-nodes-777")
 async def generate_nodes_config(request: Request, session: AsyncSession = Depends(get_async_session)):
-    # SECURITY FIX: Проверка токена
     auth = request.headers.get("authorization", "")
-    expected_token = getattr(settings, 'SYNC_NODES_TOKEN', 'AnKo_Secure_Sync_2026')
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="Forbidden: Missing Bearer Token")
-    token = auth.split(" ")[1]
-    if not hmac.compare_digest(token, expected_token):
-        raise HTTPException(status_code=403, detail="Forbidden: Invalid Token")
+    sync_token = settings.SYNC_NODES_TOKEN.strip()
+    if not sync_token:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Sync token is not configured")
+
+    expected = f"Bearer {sync_token}"
+    if not hmac.compare_digest(auth, expected):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
+    remote_addr = request.client.host if request.client else ""
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    x_real_ip = request.headers.get("x-real-ip")
+    client_ip = remote_addr
+    if remote_addr in trusted_proxies:
+        if x_real_ip:
+            client_ip = x_real_ip.strip()
+        elif forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+
+    try:
+        ipaddress.ip_address(client_ip)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    cidrs = [x.strip() for x in settings.SYNC_NODES_IP_ALLOWLIST.split(",") if x.strip()]
+    if not cidrs or not ip_in_allowlist(client_ip, cidrs):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     users = (await session.execute(select(User))).scalars().all()
     clients = [{"id": str(u.vless_uuid), "flow": "xtls-rprx-vision", "email": str(u.vless_uuid)[:8]} for u in users if getattr(u, 'is_active', False)]
-    prv, sid = 'sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI', getattr(settings, 'VLESS_SHORT_ID', '45b6b57266629592')
+    prv, sid = settings.XRAY_REALITY_PRIVATE_KEY, settings.VLESS_SHORT_ID
     
     config = {
       "log": {"loglevel": "warning"},

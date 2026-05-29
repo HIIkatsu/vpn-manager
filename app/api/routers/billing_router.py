@@ -53,9 +53,11 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         if not ip_in_allowlist(client_ip, cidrs):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
 
-    # SECURITY FIX 2: Проверка Webhook Auth
-    if getattr(settings, 'YOOKASSA_WEBHOOK_AUTH', None) or getattr(settings, 'YOOKASSA_WEBHOOK_SECRET', None):
-        if hasattr(yookassa, 'is_valid_webhook_auth') and not yookassa.is_valid_webhook_auth(request):
+    if settings.YOOKASSA_WEBHOOK_AUTH or settings.YOOKASSA_WEBHOOK_SECRET:
+        if not yookassa.is_valid_webhook_auth(
+            request.headers.get("authorization"),
+            request.headers.get("x-webhook-secret"),
+        ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook auth")
 
     allowed = await asyncio.to_thread(rate_limiter.allow, f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60, fail_open=False)
@@ -70,7 +72,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
     payload_event_id = str(payload.get("id") or "")
     event_id = payload_event_id or (getattr(notification, "event", "") + ":" + payment_obj.id)
 
-    if True:
+    if settings.YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY:
         remote_payment = await yookassa.fetch_remote_payment(payment_obj.id)
         if remote_payment is None or remote_payment.status != "succeeded":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Payment verification failed")
@@ -81,21 +83,20 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         logger.warning("Webhook payment not found", extra=log_context(payment_id=payment_obj.id, action_source="webhook"))
         return {"status": "not_found"}
 
-    # SECURITY FIX 3: Replay Guard проверяется ПОСЛЕ нахождения платежа в БД
+    if payment.processed_event_id == event_id:
+        return {"status": "duplicate"}
+
+    if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
+
+    if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
+
     is_fresh_event = await asyncio.to_thread(replay_guard.mark_if_fresh, event_id, settings.WEBHOOK_REPLAY_TTL_SECONDS)
     if not is_fresh_event:
         logger.info("Duplicate/replayed webhook blocked", extra=log_context(event_id=event_id, payment_id=payment_obj.id, action_source="webhook"))
         return {"status": "duplicate"}
 
-    if payment.processed_event_id == event_id:
-        return {"status": "duplicate"}
-        
-    if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
-        
-    if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
-        
     if not await billing.activate_payment(payment_obj.id, event_id):
         return {"status": "retry"}
 

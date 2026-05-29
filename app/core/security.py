@@ -119,5 +119,16 @@ def verify_subscription_token(user_uuid: str, expires_at: int, signature: str, s
 def ip_in_allowlist(ip: str, cidrs: list[str]) -> bool:
     if not cidrs:
         return True
-    addr = ip_address(ip)
-    return any(addr in ip_network(cidr.strip()) for cidr in cidrs if cidr.strip())
+
+    try:
+        addr = ip_address(ip)
+    except ValueError:
+        return False
+
+    for cidr in cidrs:
+        try:
+            if addr in ip_network(cidr.strip(), strict=False):
+                return True
+        except ValueError:
+            return False
+    return False

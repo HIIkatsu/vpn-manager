@@ -4,8 +4,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    YOOKASSA_WEBHOOK_SHARED_TOKEN: str | None = None
-    YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY: bool = True
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     DEBUG: bool = False
@@ -21,7 +19,6 @@ class Settings(BaseSettings):
     YOOKASSA_SECRET_KEY: str
 
     YOOKASSA_WEBHOOK_AUTH: str | None = None
-
     YOOKASSA_WEBHOOK_SECRET: str | None = None
     YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY: bool = True
     YOOKASSA_WEBHOOK_IP_ALLOWLIST: str = ""
@@ -39,11 +36,15 @@ class Settings(BaseSettings):
     XRAY_REQUEST_RETRIES: int = 2
     BILLING_PROCESSING_STALE_AFTER_SECONDS: int = 300
 
+    SYNC_NODES_TOKEN: str
+    SYNC_NODES_IP_ALLOWLIST: str = "132.243.194.119/32,194.50.94.177/32,150.251.152.174/32"
+
     XRAY_GRPC_HOST: str
     XRAY_GRPC_PORT: int
     WEBHOOK_URL_DOMAIN: str
     VLESS_SNI: str
     VLESS_PUBLIC_KEY: str
+    XRAY_REALITY_PRIVATE_KEY: str
     VLESS_SHORT_ID: str
     VLESS_FINGERPRINT: str
     ADMIN_USERNAME: str

@@ -9,7 +9,7 @@ from app.core.logging_utils import log_context
 from app.grpc.xray_api.app.proxyman.command import command_pb2, command_pb2_grpc
 from app.grpc.xray_api.common.protocol import user_pb2
 from app.grpc.xray_api.common.serial import typed_message_pb2
-# Новые импорты для работы со статистикой через gRPC
+# РќРѕРІС‹Рµ РёРјРїРѕСЂС‚С‹ РґР»СЏ СЂР°Р±РѕС‚С‹ СЃРѕ СЃС‚Р°С‚РёСЃС‚РёРєРѕР№ С‡РµСЂРµР· gRPC
 from app.grpc.xray_api.app.stats.command import command_pb2 as stats_pb2
 from app.grpc.xray_api.app.stats.command import command_pb2_grpc as stats_pb2_grpc
 
@@ -21,7 +21,7 @@ def _build_vless_account_message(uuid: str, flow: str = 'xtls-rprx-vision', encr
     uuid_bytes = normalized_uuid.encode('utf-8')
     payload += b'\x0A' + bytes([len(uuid_bytes)]) + uuid_bytes
     
-    # Если flow пустой (например, для WebSocket), не добавляем этот байт в protobuf
+    # Р•СЃР»Рё flow РїСѓСЃС‚РѕР№ (РЅР°РїСЂРёРјРµСЂ, РґР»СЏ WebSocket), РЅРµ РґРѕР±Р°РІР»СЏРµРј СЌС‚РѕС‚ Р±Р°Р№С‚ РІ protobuf
     if flow:
         flow_bytes = flow.encode('utf-8')
         payload += b'\x12' + bytes([len(flow_bytes)]) + flow_bytes
@@ -90,7 +90,7 @@ class XrayManager:
             stub = command_pb2_grpc.HandlerServiceStub(channel)
             
             for tag in self.inbound_tags:
-                # УМНЫЙ ВЫБОР FLOW: Отключаем Vision для WebSocket (тег содержит ws)
+                # РЈРњРќР«Р™ Р’Р«Р‘РћР  FLOW: РћС‚РєР»СЋС‡Р°РµРј Vision РґР»СЏ WebSocket (С‚РµРі СЃРѕРґРµСЂР¶РёС‚ ws)
                 flow = "xtls-rprx-vision" if "ws" not in tag.lower() else ""
                 
                 account_bytes = _build_vless_account_message(uuid, flow=flow)
@@ -157,14 +157,14 @@ class XrayManager:
         return success_overall
 
     async def get_live_traffic_stats(self, reset: bool = False) -> dict[str, int]:
-        # ПОЛНОСТЬЮ ИЗБАВИЛИСЬ ОТ SUBPROCESS
+        # РџРћР›РќРћРЎРўР¬Р® РР—Р‘РђР’РР›РРЎР¬ РћРў SUBPROCESS
         traffic_map = {}
         try:
             channel = await self.get_channel()
             stub = stats_pb2_grpc.StatsServiceStub(channel)
             request = stats_pb2.QueryStatsRequest(pattern="user>>>", reset=reset)
             
-            # gRPC вызов напрямую в память Xray
+            # gRPC РІС‹Р·РѕРІ РЅР°РїСЂСЏРјСѓСЋ РІ РїР°РјСЏС‚СЊ Xray
             response = await asyncio.wait_for(stub.QueryStats(request), timeout=5.0)
             
             for stat in response.stat:
