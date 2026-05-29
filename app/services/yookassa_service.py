@@ -30,10 +30,14 @@ class YooKassaService:
         return f"Basic {base64.b64encode(token).decode('ascii')}"
 
     def _is_valid_basic_auth(self, authorization_header: str | None) -> bool:
-        return bool(
-            authorization_header
-            and hmac.compare_digest(authorization_header.strip(), self.expected_basic_auth())
-        )
+        if not authorization_header:
+            return False
+
+        configured_auth = settings.YOOKASSA_WEBHOOK_AUTH
+        if configured_auth and hmac.compare_digest(authorization_header.strip(), configured_auth):
+            return True
+
+        return hmac.compare_digest(authorization_header.strip(), self.expected_basic_auth())
 
     def _is_valid_webhook_secret(self, token: str | None) -> bool:
         expected = settings.YOOKASSA_WEBHOOK_SECRET
