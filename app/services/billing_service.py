@@ -5,6 +5,8 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db.models import User
 from app.core.security import DistributedLock
 from app.core.logging_utils import log_context
 from app.core.settings import settings
@@ -99,6 +101,40 @@ class BillingService:
                 payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid}),
             )
 
+            # РЕФЕРАЛЬНАЯ СИСТЕМА: Начисление бонуса
+            if getattr(user, 'referrer_telegram_id', None):
+                try:
+                    ref_res = await self.session.execute(select(User).where(User.telegram_id == user.referrer_telegram_id))
+                    referrer = ref_res.scalars().first()
+                    if referrer:
+                        if referrer.sub_end_date is None or referrer.sub_end_date < now:
+                            referrer.sub_end_date = now + timedelta(days=7)
+                        else:
+                            referrer.sub_end_date += timedelta(days=7)
+                        referrer.is_active = True
+                        
+                        # Уведомляем пригласившего
+                        asyncio.create_task(
+                            self.notifier.send_message(
+                                chat_id=referrer.telegram_id,
+                                text="🎁 <b>По вашей ссылке зарегистрировался и оплатил друг!</b>\n\nВам автоматически начислено <b>+7 дней</b> премиум-доступа."
+                            )
+                        )
+                        
+                        # Отправляем новый статус рефовода в Xray
+                        await self.outbox.enqueue(
+                            event_type="xray.add_client",
+                            aggregate_type="referral_reward",
+                            aggregate_id=str(referrer.id),
+                            dedup_key=f"xray.add_client:ref_{referrer.id}_{int(now.timestamp())}",
+                            payload_json=json.dumps({"telegram_id": referrer.telegram_id, "uuid": referrer.vless_uuid}),
+                        )
+                except Exception:
+                    self.logger.exception("Failed to process referral reward")
+                finally:
+                    # Очищаем поле, чтобы награда выдалась только за ПЕРВУЮ оплату
+                    user.referrer_telegram_id = None
+
             await self.session.flush()
             return True
         except Exception:
@@ -124,18 +160,12 @@ class BillingService:
 
     async def process_pending(self) -> None:
         if not self._processing_lock.acquire("billing:process_pending", ttl_seconds=60):
-            self.logger.info(
-                "Skipped process_pending due to active distributed lock",
-                extra=log_context(action_source="process_pending", endpoint="distributed_lock"),
-            )
+            self.logger.info("Skipped process_pending due to lock")
             return
 
         reclaimed = await self.reclaim_stale_processing()
         if reclaimed:
-            self.logger.warning(
-                "Reclaimed stale processing payments",
-                extra=log_context(count=reclaimed, action_source="process_pending"),
-            )
+            self.logger.warning(f"Reclaimed {reclaimed} stale processing payments")
 
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
         pending_payments = await self.payments.get_pending_before(
@@ -151,27 +181,14 @@ class BillingService:
                     timeout=settings.YOOKASSA_REQUEST_TIMEOUT_SECONDS * (settings.YOOKASSA_REQUEST_RETRIES + 2),
                 )
                 if remote_payment.status == "succeeded":
-                    activated = await self.activate_payment(pid)
-                    if not activated:
-                        self.logger.warning(
-                            "Pending payment compensation failed",
-                            extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
-                        )
+                    await self.activate_payment(pid)
                 elif remote_payment.status in {"canceled", "failed"}:
                     payment = await self.payments.get_by_payment_id_for_update(pid)
                     if payment and payment.status in {"pending", "processing"}:
                         payment.status = "failed"
                         payment.processing_started_at = None
                         await self.session.flush()
-                        self.logger.warning(
-                            "Pending payment marked failed from remote status",
-                            extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
-                        )
             except Exception:
-                self.logger.exception(
-                    "Pending payment compensation item failed",
-                    extra=log_context(payment_id=pid, action_source="process_pending", attempt=attempt),
-                )
                 continue
 
     async def notify_expiring_subscriptions(self, days_before: int = 3) -> None:
@@ -186,8 +203,4 @@ class BillingService:
                     ),
                 )
             except Exception:
-                self.logger.exception(
-                    "Failed to send expiring subscription notification",
-                    extra=log_context(telegram_id=user.telegram_id, action_source="notify_expiring_subscriptions"),
-                )
                 continue

@@ -6,7 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.models.base import Base
 
-
 class User(Base):
     __tablename__ = "users"
     username = Column(String, nullable=True)
@@ -20,5 +19,8 @@ class User(Base):
     traffic_total_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     traffic_last_live_bytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # Тот, кто пригласил этого пользователя
+    referrer_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
 
     payments: Mapped[list["Payment"]] = relationship(back_populates="user")

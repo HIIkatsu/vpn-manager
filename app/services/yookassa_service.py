@@ -92,7 +92,7 @@ class YooKassaService:
             raise RuntimeError("yookassa SDK is not installed")
         
         if not return_url:
-            return_url = "tg://resolve?domain=NeuroVPN_AI_bot"
+            return_url = "tg://resolve?domain=AnKoVPN_bot"
 
         payment_data = {
             "amount": {"value": f"{Decimal(str(amount)):.2f}", "currency": "RUB"},

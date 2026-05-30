@@ -4,22 +4,27 @@ main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🚀 Подключить VPN")],
         [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="💳 Подписка")],
-        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="❓ Помощь")],
+        [KeyboardButton(text="📖 Инструкция"), KeyboardButton(text="💬 Поддержка")],
     ],
     resize_keyboard=True,
+    is_persistent=True
 )
 
 main_inline_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
-        [InlineKeyboardButton(text="🚀 Подключить VPN", callback_data="menu_connect")],
+        [InlineKeyboardButton(text="🚀 Быстрое подключение", callback_data="menu_connect")],
         [
-            InlineKeyboardButton(text="👤 Профиль", callback_data="menu_profile"),
-            InlineKeyboardButton(text="💳 Подписка", callback_data="menu_subscription"),
+            InlineKeyboardButton(text="👤 Мой профиль", callback_data="menu_profile"),
+            InlineKeyboardButton(text="💳 Тарифы и Оплата", callback_data="menu_subscription"),
         ],
         [
-            InlineKeyboardButton(text="📊 Статистика", callback_data="menu_stats"),
-            InlineKeyboardButton(text="❓ Помощь", callback_data="menu_help"),
+            InlineKeyboardButton(text="📡 Состояние сети", callback_data="menu_status"),
+            InlineKeyboardButton(text="🆘 Не работает VPN", callback_data="menu_sos"),
         ],
+        [
+            InlineKeyboardButton(text="📖 Инструкция", url="https://neurosmmai.ru/setup"),
+            InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/BarsikSneg")
+        ]
     ]
 )
 
@@ -31,8 +36,9 @@ os_select_keyboard = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(text="🪟 Windows", callback_data="os_windows"),
-            InlineKeyboardButton(text="🐧 Linux", callback_data="os_linux"),
+            InlineKeyboardButton(text="💻 macOS", callback_data="os_macos"),
         ],
-        [InlineKeyboardButton(text="💻 macOS", callback_data="os_macos")],
+        # Теперь эта кнопка вызывает отдельный хендлер, а не просто "назад"
+        [InlineKeyboardButton(text="⏭ Пропустить / В главное меню", callback_data="skip_os_select")],
     ]
 )

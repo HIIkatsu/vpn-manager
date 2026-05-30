@@ -1,27 +1,23 @@
 import uuid
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.models import User
 from app.db.repositories.user_repo import UserRepository
-
 
 class UserService:
     def __init__(self, users: UserRepository):
         self.users = users
 
-    async def get_or_create(self, telegram_id: int, username: str = None):
+    async def get_or_create(self, telegram_id: int, username: str = None, referrer_telegram_id: int = None):
         user = await self.get_by_telegram_id(telegram_id)
         if user is None:
-            import uuid
-            from app.db.models import User
             user = User(
                 telegram_id=telegram_id,
                 username=username,
                 vless_uuid=str(uuid.uuid4()),
                 is_active=False,
                 preferred_os="android",
+                referrer_telegram_id=referrer_telegram_id
             )
             db_session = getattr(self.users, "session", self.users)
             db_session.add(user)
@@ -43,8 +39,6 @@ class UserService:
         return user
 
     async def get_by_telegram_id(self, telegram_id: int):
-        from sqlalchemy.future import select
-        from app.db.models import User
         db_session = getattr(self.users, "session", self.users)
         result = await db_session.execute(select(User).where(User.telegram_id == telegram_id))
         return result.scalars().first()

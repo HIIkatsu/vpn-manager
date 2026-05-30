@@ -4,20 +4,18 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from html import escape
 from uuid import uuid4
-
 from fastapi import APIRouter, Depends, Form, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import cast, String
+from sqlalchemy import cast, String, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
-
 from app.api.dependencies.common import get_read_session, get_write_session, get_current_admin
 from app.api.utils.subscription import format_bytes
-from app.core.logging_utils import log_context
 from app.core.settings import settings
 from app.db.models import PendingAction, User
+from app.db.models.promocode import Promocode
 from app.db.database import async_session_maker
 from app.services.transaction import session_scope
 from app.services.traffic_stats_service import TrafficStatsService
@@ -28,7 +26,6 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 logger = logging.getLogger(__name__)
 
-
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_dashboard(
     request: Request,
@@ -38,41 +35,44 @@ async def admin_dashboard(
 ):
     xray = XrayManager()
     stats_task = asyncio.create_task(xray.get_live_traffic_stats(reset=False))
-
+    
     stmt = select(User).order_by(User.telegram_id)
     if q:
-        stmt = stmt.where(cast(User.telegram_id, String).like(f"%{q.strip()}%"))
-
-    
-    
-
+        search_query = f"%{q.strip()}%"
+        # Умный поиск: по ID или по Username в базе
+        stmt = stmt.where(
+            or_(
+                cast(User.telegram_id, String).like(search_query),
+                User.username.like(search_query)
+            )
+        )
+        
     live_stats = await stats_task
     users_db = (await session.execute(stmt)).scalars().all()
     pending_actions = (await session.execute(select(PendingAction).options(joinedload(PendingAction.user)))).scalars().all()
+    promos_db = (await session.execute(select(Promocode).order_by(Promocode.id.desc()))).scalars().all()
 
     now = datetime.now(timezone.utc)
     total_bytes = 0
     active_users = 0
     users_data = []
-
+    
     for u in users_db:
         used_bytes = live_stats.get(str(u.telegram_id), 0)
         total_used_bytes = await TrafficStatsService.get_total_with_live(session, u.telegram_id, used_bytes)
         total_bytes += total_used_bytes
-
         is_currently_active = u.is_active and (u.sub_end_date is None or u.sub_end_date >= now)
         if is_currently_active:
             active_users += 1
-
         days_left = None
         if u.sub_end_date:
             delta = u.sub_end_date - now
             days_left = max(0, delta.days + (1 if delta.seconds > 0 else 0))
-
         users_data.append(
             {
                 "id": u.id,
                 "telegram_id": u.telegram_id,
+                "username": u.username,
                 "vless_uuid": u.vless_uuid,
                 "masked_uuid": f"{str(u.vless_uuid)[:8]}************{str(u.vless_uuid)[-4:]}",
                 "is_active": is_currently_active,
@@ -83,12 +83,12 @@ async def admin_dashboard(
                 "traffic_percent": round(min(100.0, (total_used_bytes / (1024**4)) * 100), 2),
             }
         )
-
+        
     pending_data = []
     for p in pending_actions:
         tg_id = p.user.telegram_id if p.user else (p.payload.get("telegram_id", "Новый") if p.payload else "Новый")
         pending_data.append({"id": p.id, "action_type": p.action_type, "tg_id": tg_id})
-
+        
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
@@ -100,10 +100,10 @@ async def admin_dashboard(
             "total_traffic": format_bytes(total_bytes),
             "traffic_percent": round(min(100.0, (total_bytes / (1024**4)) * 100), 2),
             "pending": pending_data,
+            "promocodes": promos_db,
             "query": q or "",
         },
     )
-
 
 @router.post("/admin/user/add")
 async def admin_user_add(
@@ -112,7 +112,6 @@ async def admin_user_add(
     action = PendingAction(action_type="add", payload={"telegram_id": telegram_id, "vless_uuid": str(uuid4())})
     session.add(action)
     return RedirectResponse(url="/admin", status_code=303)
-
 
 @router.post("/admin/user/toggle")
 async def admin_user_toggle(
@@ -124,7 +123,6 @@ async def admin_user_toggle(
         action = PendingAction(action_type=action_type, user_id=user.id)
         session.add(action)
     return RedirectResponse(url="/admin", status_code=303)
-
 
 @router.post("/admin/user/add_days")
 async def admin_user_add_days(
@@ -141,7 +139,6 @@ async def admin_user_add_days(
         session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
     return RedirectResponse(url="/admin", status_code=303)
 
-
 @router.post("/admin/user/set_infinite")
 async def admin_user_set_infinite(
     user_id: int = Form(...),
@@ -154,7 +151,6 @@ async def admin_user_set_infinite(
         session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
     return RedirectResponse(url="/admin", status_code=303)
 
-
 @router.post("/admin/user/reset_traffic")
 async def admin_user_reset_traffic(
     user_id: int = Form(...),
@@ -166,7 +162,6 @@ async def admin_user_reset_traffic(
         user.traffic_total_bytes = 0
     return RedirectResponse(url="/admin", status_code=303)
 
-
 @router.post("/admin/user/delete")
 async def admin_user_delete(
     user_id: int = Form(...), session: AsyncSession = Depends(get_write_session), admin=Depends(get_current_admin)
@@ -177,6 +172,28 @@ async def admin_user_delete(
         session.add(action)
     return RedirectResponse(url="/admin", status_code=303)
 
+@router.post("/admin/promo/add")
+async def admin_promo_add(
+    code: str = Form(...),
+    reward_days: int = Form(...),
+    max_uses: int = Form(...),
+    session: AsyncSession = Depends(get_write_session),
+    admin=Depends(get_current_admin)
+):
+    promo = Promocode(code=code.strip().upper(), reward_days=reward_days, max_uses=max_uses)
+    session.add(promo)
+    return RedirectResponse(url="/admin", status_code=303)
+
+@router.post("/admin/promo/delete")
+async def admin_promo_delete(
+    promo_id: int = Form(...),
+    session: AsyncSession = Depends(get_write_session),
+    admin=Depends(get_current_admin)
+):
+    promo = await session.get(Promocode, promo_id)
+    if promo:
+        await session.delete(promo)
+    return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/apply")
 async def admin_apply(admin=Depends(get_current_admin)):
@@ -185,7 +202,6 @@ async def admin_apply(admin=Depends(get_current_admin)):
         actions = result.scalars().all()
         if not actions:
             return RedirectResponse(url="/admin", status_code=303)
-
         action_snapshots = []
         for action in actions:
             snapshot = {"id": action.id, "action_type": action.action_type, "user_id": action.user_id, "payload": action.payload}
@@ -194,9 +210,10 @@ async def admin_apply(admin=Depends(get_current_admin)):
                 if user:
                     snapshot.update({"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid})
             action_snapshots.append(snapshot)
-
+    
     outcomes: dict[int, bool] = {}
     xray = XrayManager()
+    
     for action in action_snapshots:
         success = False
         try:
@@ -209,16 +226,9 @@ async def admin_apply(admin=Depends(get_current_admin)):
             elif action_type == "toggle_enable" and action.get("telegram_id") and action.get("vless_uuid"):
                 success = await xray.add_client(email=str(action["telegram_id"]), uuid=str(action["vless_uuid"]))
         except Exception:
-            logger.exception(
-                "Failed to deliver pending action to Xray",
-                extra=log_context(
-                    action_source="admin_apply",
-                    event_id=str(action["id"]),
-                    telegram_id=action.get("telegram_id") or action.get("user_id"),
-                ),
-            )
+            logger.exception("Failed to deliver pending action to Xray")
         outcomes[action["id"]] = success
-
+        
     async with session_scope(async_session_maker) as session:
         for action in action_snapshots:
             if not outcomes.get(action["id"]):
@@ -226,7 +236,6 @@ async def admin_apply(admin=Depends(get_current_admin)):
             db_action = await session.get(PendingAction, action["id"])
             if not db_action:
                 continue
-
             if action["action_type"] == "add":
                 payload = action.get("payload") or {}
                 user = await session.scalar(select(User).where(User.telegram_id == int(payload["telegram_id"])))
@@ -247,12 +256,9 @@ async def admin_apply(admin=Depends(get_current_admin)):
                 if user:
                     await delete_user_with_relations(session, user)
                     continue
-
             await session.delete(db_action)
-
+            
     return RedirectResponse(url="/admin", status_code=303)
-
-
 
 @router.post("/admin/user/set_date")
 async def admin_user_set_date(
@@ -263,8 +269,6 @@ async def admin_user_set_date(
 ):
     user = await session.get(User, user_id)
     if user and end_date:
-        from datetime import datetime, timezone
-        # Парсим дату из HTML5 инпута (YYYY-MM-DD) и делаем её UTC-aware
         parsed_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         user.sub_end_date = parsed_date
         session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
@@ -291,89 +295,25 @@ async def admin_audit_dashboard(request: Request, admin=Depends(get_current_admi
         "🇫🇮 Финляндия (Главный)": "127.0.0.1",
         "🇩🇪 Германия": settings.GERMANY_PUBLIC_IP,
         "🇳🇱 Нидерланды": settings.NETHERLANDS_PUBLIC_IP,
-        "🇷🇺 Транзит (РФ)": settings.RUSSIA_BALANCER_IP,
+        "🇷🇺 Траффик РФ": settings.RUSSIA_BALANCER_IP,
     }
-
     async def run_command(args: list[str], timeout: int) -> str:
-        return await asyncio.to_thread(
-            subprocess.check_output,
-            args,
-            timeout=timeout,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-
+        return await asyncio.to_thread(subprocess.check_output, args, timeout=timeout, stderr=subprocess.STDOUT, text=True)
     async def audit_node(ip: str) -> dict[str, str]:
         try:
             if ip == "127.0.0.1":
                 status = (await run_command(["systemctl", "is-active", "xray"], timeout=2)).strip()
                 logs = await run_command(["journalctl", "-u", "xray", "-p", "3", "-n", "15", "--no-pager"], timeout=3)
             else:
-                ssh_base = [
-                    "ssh",
-                    "-o", "StrictHostKeyChecking=no",
-                    "-o", "ConnectTimeout=3",
-                    "-o", "PasswordAuthentication=no",
-                    f"root@{ip}",
-                ]
-                status = (await run_command([*ssh_base, "systemctl is-active xray"], timeout=5)).strip()
-                logs = await run_command([*ssh_base, "journalctl -u xray -p 3 -n 15 --no-pager"], timeout=6)
-
-            clean_logs = logs.strip() if logs.strip() else "✅ Ошибок нет. Xray работает штатно."
-            return {"status": status, "logs": clean_logs}
-        except subprocess.TimeoutExpired:
-            logger.warning(
-                "Admin audit node timeout",
-                extra=log_context(endpoint="/admin/audit", action_source="admin_audit"),
-            )
-            return {"status": "timeout", "logs": "⚠️ Сервер не ответил вовремя. Возможно, завис."}
-        except subprocess.CalledProcessError as exc:
-            logger.warning(
-                "Admin audit command failed",
-                extra=log_context(endpoint="/admin/audit", action_source="admin_audit"),
-            )
-            return {"status": "error", "logs": f"❌ Ошибка подключения. Код: {exc.returncode}"}
-
-    audit_results = await asyncio.gather(*(audit_node(ip) for ip in nodes.values()))
-    results = dict(zip(nodes.keys(), audit_results))
-
-    html = """
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Аудит Сети | AnKo VPN</title>
-        <style>
-            body { background-color: #0f172a; color: #cbd5e1; font-family: system-ui, -apple-system, sans-serif; padding: 20px; margin: 0; }
-            h1 { color: #f8fafc; font-size: 24px; margin-bottom: 20px; }
-            .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
-            .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px; }
-            .title { font-size: 18px; font-weight: bold; color: #f8fafc; }
-            .badge { padding: 4px 10px; border-radius: 20px; font-size: 14px; font-weight: bold; text-transform: uppercase; }
-            .bg-active { background: #10b981; color: #022c22; }
-            .bg-error { background: #ef4444; color: #450a0a; }
-            .bg-timeout { background: #f59e0b; color: #451a03; }
-            pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 13px; color: #94a3b8; white-space: pre-wrap; word-break: break-all; }
-            .btn-back { display: inline-block; background: #3b82f6; color: white; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; margin-bottom: 20px; }
-            .btn-back:hover { background: #2563eb; }
-        </style>
-    </head>
-    <body>
-        <a href="/admin" class="btn-back">← Назад в Админку</a>
-        <h1>📡 Состояние серверов и логи ошибок</h1>
-        <div class="grid">
-    """
-    for name, data in results.items():
-        st = data["status"]
-        badge_class = "bg-active" if st == "active" else ("bg-timeout" if st == "timeout" else "bg-error")
-        display_status = "РАБОТАЕТ" if st == "active" else ("ТАЙМАУТ" if st == "timeout" else "ОШИБКА")
-        html += (
-            f'<div class="card"><div class="header"><div class="title">{escape(name)}</div>'
-            f'<div class="badge {badge_class}">{display_status}</div></div>'
-            f'<pre>{escape(data["logs"])}</pre></div>'
-        )
-
-    html += "</div></body></html>"
+                ssh = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=3", "-o", "PasswordAuthentication=no", f"root@{ip}"]
+                status = (await run_command([*ssh, "systemctl is-active xray"], timeout=5)).strip()
+                logs = await run_command([*ssh, "journalctl -u xray -p 3 -n 15 --no-pager"], timeout=6)
+            return {"status": status, "logs": logs.strip() if logs.strip() else "✅ Ошибок нет."}
+        except Exception:
+            return {"status": "error", "logs": "❌ Ошибка подключения."}
+            
+    results = dict(zip(nodes.keys(), await asyncio.gather(*(audit_node(ip) for ip in nodes.values()))))
+    html = "<html><body style='background:#0f172a;color:#cbd5e1;padding:20px;font-family:sans-serif;'><a href='/admin' style='color:#3b82f6;'><- Назад</a><h1>📡 Аудит</h1>"
+    for k, v in results.items():
+        html += f"<h3>{escape(k)} - {v['status']}</h3><pre style='background:#1e293b;padding:10px;'>{escape(v['logs'])}</pre>"
     return HTMLResponse(content=html)
