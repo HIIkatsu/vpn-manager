@@ -1,13 +1,9 @@
 from fastapi import APIRouter, Depends, Request, Response, HTTPException, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-import base64
-import math
-import json
-import hmac
-import ipaddress
+import base64, math, json, hmac, ipaddress, urllib.parse, hashlib, time, aiohttp
 from urllib.parse import quote
 from datetime import datetime, timezone
 from app.db.models import User
@@ -16,6 +12,16 @@ from app.core.settings import settings
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+def get_env(key, default=""):
+    try:
+        with open("/root/vpn-manager-v2/.env", "r") as f:
+            for line in f:
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return default
 
 def format_bytes(size_bytes: int) -> str:
     if not size_bytes or size_bytes == 0: return "0 B"
@@ -78,12 +84,9 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
         end_date = user.sub_end_date.replace(tzinfo=timezone.utc) if user.sub_end_date.tzinfo is None else user.sub_end_date
         days_left = (end_date - now).days
         if 0 <= days_left <= 3:
-            if days_left == 1:
-                d_str = "ОСТАЛСЯ 1 ДЕНЬ"
-            elif days_left in [2, 3]:
-                d_str = f"ОСТАЛОСЬ {days_left} ДНЯ"
-            else:
-                d_str = "ОСТАЛОСЬ МЕНЕЕ 1 ДНЯ"
+            if days_left == 1: d_str = "ОСТАЛСЯ 1 ДЕНЬ"
+            elif days_left in [2, 3]: d_str = f"ОСТАЛОСЬ {days_left} ДНЯ"
+            else: d_str = "ОСТАЛОСЬ МЕНЕЕ 1 ДНЯ"
             configs.insert(0, divider(f"⚠️ {d_str} ПОДПИСКИ!"))
 
     sub_info = f"upload=0; download={user.traffic_total_bytes or 0}; total=1099511627776; expire={int(user.sub_end_date.timestamp()) if user.sub_end_date else 0}"
@@ -99,6 +102,159 @@ async def get_subscription(uuid: str, os: str = "android", session: AsyncSession
 
 @router.get("/setup")
 async def root_instruction(request: Request): return templates.TemplateResponse(request=request, name="setup.html")
+
+# --- СТАТУС ОПЛАТЫ (РЕДИРЕКТ С КАССЫ) ---
+@router.get("/cabinet/{uuid}/status")
+async def payment_status(request: Request, uuid: str):
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Обработка платежа | AnKo VPN</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <script>
+            tailwind.config = {{
+              theme: {{ extend: {{ colors: {{ dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }}
+            }}
+            // Авто-редирект обратно в кабинет через 7 секунд
+            setTimeout(() => {{ window.location.href = '/cabinet/{uuid}'; }}, 7000);
+        </script>
+    </head>
+    <body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans">
+        <div class="max-w-md w-full bg-dark-800 p-8 rounded-3xl border border-slate-700/50 shadow-2xl text-center relative overflow-hidden">
+            <div class="mb-6 flex justify-center">
+                <div class="w-20 h-20 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            </div>
+            <h2 class="text-2xl font-bold text-white mb-3">Проверяем оплату...</h2>
+            <p class="text-slate-400 text-sm mb-6 leading-relaxed">
+                Обычно банки обрабатывают перевод за 1-2 минуты.<br>
+                Как только деньги поступят, подписка активируется автоматически.
+            </p>
+            <a href="/cabinet/{uuid}" class="inline-block w-full py-4 px-6 bg-slate-700/50 hover:bg-slate-700 text-white font-medium rounded-xl transition-all border border-slate-600">
+                Вернуться в кабинет
+            </a>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
+
+# --- СТРАНИЦА ВЫБОРА ОПЛАТЫ ---
+@router.get("/cabinet/{uuid}/pay/{amount}")
+async def web_pay(request: Request, uuid: str, amount: float, session: AsyncSession = Depends(get_write_session)):
+    result = await session.execute(select(User).where(User.vless_uuid == uuid))
+    user = result.scalars().first()
+    if not user: return Response("User not found", status_code=404)
+    
+    days = 30 if amount == 100.0 else 90 if amount == 250.0 else 365
+    amount_ym = str(int(amount))
+    amount_str = f"{amount:.2f}"
+    
+    # Формируем URL для возврата в веб-кабинет
+    base_url = f"https://{getattr(settings, 'WEBHOOK_URL_DOMAIN', request.url.hostname)}"
+    return_url = f"{base_url}/cabinet/{uuid}/status"
+
+    # 1. ЮMoney
+    YOOMONEY_RECEIVER = get_env("YOOMONEY_RECEIVER", "4100119543123060")
+    ym_params = {"receiver": YOOMONEY_RECEIVER, "quickpay-form": "shop", "targets": f"VPN {days} d", "sum": amount_ym, "label": f"{user.telegram_id}_{days}", "successURL": return_url}
+    ym_url = f"https://yoomoney.ru/quickpay/confirm.xml?{urllib.parse.urlencode(ym_params)}"
+
+    # 2. AnyPay (Используем urlencode для безопасной передачи return_url)
+    ANYPAY_PROJECT_ID = get_env("ANYPAY_PROJECT_ID", "17784")
+    ANYPAY_SECRET_KEY = get_env("ANYPAY_SECRET_KEY", "")
+    anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
+    
+    sign_str = f"{ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:{return_url}:{return_url}:{ANYPAY_SECRET_KEY}"
+    anypay_params = {
+        "merchant_id": ANYPAY_PROJECT_ID,
+        "pay_id": anypay_pay_id,
+        "amount": amount_str,
+        "currency": "RUB",
+        "desc": "VPN",
+        "success_url": return_url,
+        "fail_url": return_url,
+        "sign": hashlib.sha256(sign_str.encode()).hexdigest()
+    }
+    anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(anypay_params)}"
+
+    # 3. CryptoBot
+    crypto_url = ""
+    CRYPTOBOT_TOKEN = get_env("CRYPTOBOT_TOKEN", "589728:AA0etJX4eBfcwigpnGzaWdSjD2aIQ5cfqqV")
+    try:
+        async with aiohttp.ClientSession() as http_session:
+            async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": amount_ym, "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
+                res_data = await resp.json()
+                if res_data.get("ok"): 
+                    crypto_url = res_data["result"].get("pay_url", "")
+                    if crypto_url.startswith("https://t.me/"):
+                        crypto_url = crypto_url.replace("https://t.me/", "tg://resolve?domain=").replace("?start=", "&start=")
+    except Exception: pass
+
+    crypto_btn_html = f'''
+    <a href="{crypto_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-blue-500/50 p-4 transition-all duration-200">
+        <div class="flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:scale-110 transition-transform">
+                <i class="fa-brands fa-bitcoin"></i>
+            </div>
+            <div class="text-left">
+                <div class="font-medium text-white group-hover:text-blue-400 transition-colors">Криптовалюта</div>
+                <div class="text-xs text-slate-400">CryptoBot Telegram</div>
+            </div>
+        </div>
+    </a>
+    ''' if crypto_url else ''
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Оплата тарифа | AnKo VPN</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <script>
+            tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}
+        </script>
+    </head>
+    <body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white">
+        <div class="max-w-md w-full">
+            <div class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm">
+                <i class="fa-solid fa-wallet absolute -right-6 -top-6 text-[100px] text-slate-700/10 rotate-12"></i>
+                <div class="relative z-10">
+                    <div class="text-center mb-8">
+                        <h2 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Счет на {int(amount)} ₽</h2>
+                        <p class="text-slate-400 text-sm">Выберите способ оплаты</p>
+                    </div>
+                    <div class="space-y-3">
+                        <a href="{anypay_url}" class="group block relative rounded-2xl bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 hover:border-brand-500 p-4 transition-all duration-200">
+                            <div class="absolute -top-2.5 right-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.5)]">Удобно</div>
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-brand-500/20 flex items-center justify-center text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-bolt"></i></div>
+                                <div class="text-left"><div class="font-medium text-white group-hover:text-brand-400 transition-colors">Карта РФ / СБП</div><div class="text-xs text-brand-400/80">Мгновенное зачисление</div></div>
+                            </div>
+                        </a>
+                        <a href="{ym_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-credit-card"></i></div>
+                                <div class="text-left"><div class="font-medium text-white group-hover:text-emerald-400 transition-colors">СберPay / ЮMoney</div><div class="text-xs text-slate-400">Без комиссии</div></div>
+                            </div>
+                        </a>
+                        {crypto_btn_html}
+                    </div>
+                    <a href="/cabinet/{uuid}" class="mt-8 flex items-center justify-center gap-2 w-full py-4 px-6 bg-dark-900/50 text-slate-400 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 hover:bg-slate-800/80">
+                        <i class="fa-solid fa-arrow-left"></i> Вернуться назад
+                    </a>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 
 @router.get("/cabinet/{uuid}")
 async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depends(get_write_session)):

@@ -1,112 +1,118 @@
-import asyncio
-import ipaddress
-import json
-import logging
-from decimal import Decimal
+import hashlib, hmac, json, logging
+from datetime import datetime as dt, timedelta, timezone
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies.common import get_write_session
 from app.bot.core import bot
-from app.core.container import get_billing_service
-from app.core.logging_utils import log_context
-from app.core.security import SharedRateLimiter, WebhookReplayGuard, ip_in_allowlist
-from app.core.settings import settings
 from app.db.models import User
-from app.services.billing_service import BillingService
-from app.services.yookassa_service import YooKassaService
+from app.db.repositories.outbox_repo import OutboxRepository
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-rate_limiter = SharedRateLimiter()
-replay_guard = WebhookReplayGuard()
 
-@router.post("/webhook/yookassa")
-async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_write_session)) -> dict:
-    yookassa = YooKassaService()
-    raw_body = await request.body()
+def get_env(key, default=""):
     try:
-        payload = json.loads(raw_body.decode("utf-8"))
+        with open("/root/vpn-manager-v2/.env", "r") as f:
+            for line in f:
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
     except Exception:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
-        
-    trusted_proxies = {ip.strip() for ip in settings.TRUSTED_PROXY_IPS.split(",") if ip.strip()}
-    remote_addr = request.client.host if request.client else ""
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    x_real_ip = request.headers.get("x-real-ip")
-    client_ip = remote_addr
-    if remote_addr in trusted_proxies:
-        if x_real_ip:
-            client_ip = x_real_ip.strip()
-        elif forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip()
-            
+        pass
+    return default
+
+async def activate_subscription(session: AsyncSession, telegram_id: int, days: int, payment_source: str, tx_id: str):
+    user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+    if not user: return False
+    now = dt.now(timezone.utc)
+    if user.sub_end_date is None or user.sub_end_date < now: user.sub_end_date = now + timedelta(days=days)
+    else: user.sub_end_date += timedelta(days=days)
+    user.is_active = True
+    
+    outbox = OutboxRepository(session)
+    await outbox.enqueue(event_type="xray.add_client", aggregate_type=f"{payment_source}_payment", aggregate_id=str(user.id), dedup_key=f"xray.add_client:pay_{tx_id}", payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid}))
+    await session.commit()
     try:
-        ipaddress.ip_address(client_ip)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid client IP")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Перейти в личный кабинет", callback_data="menu_profile")]])
+        await bot.send_message(chat_id=telegram_id, text=f"✅ <b>Оплата успешно получена!</b>\n\nВам начислено <b>+{days} дней</b> премиум-доступа.", parse_mode="HTML", reply_markup=kb)
+    except Exception: pass
+    return True
 
-    # SECURITY FIX 1: Проверка IP-адреса ЮKassa
-    allowed_ips = getattr(settings, 'YOOKASSA_WEBHOOK_IP_ALLOWLIST', "")
-    if allowed_ips:
-        cidrs = [x.strip() for x in allowed_ips.split(",") if x.strip()]
-        if not ip_in_allowlist(client_ip, cidrs):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden IP")
+@router.post("/api/yoomoney/webhook")
+async def yoomoney_webhook(request: Request, notification_type: str = Form(...), operation_id: str = Form(...), amount: str = Form(...), currency: str = Form(...), datetime_str: str = Form(..., alias="datetime"), sender: str = Form(""), codepro: str = Form(...), label: str = Form(""), sha1_hash: str = Form(...), session: AsyncSession = Depends(get_write_session)):
+    YOOMONEY_SECRET = get_env("YOOMONEY_SECRET", "")
+    hash_string = f"{notification_type}&{operation_id}&{amount}&{currency}&{datetime_str}&{sender}&{codepro}&{YOOMONEY_SECRET}&{label}"
+    if hashlib.sha1(hash_string.encode('utf-8')).hexdigest() != sha1_hash: return Response(status_code=400, content="Invalid hash")
+    if not label or "_" not in label: return Response(status_code=200, content="Ignored")
+    try:
+        tg_str, days_str = label.split("_")
+        await activate_subscription(session, int(tg_str), int(days_str), "yoomoney", operation_id)
+    except Exception: pass
+    return Response(status_code=200, content="OK")
 
-    if settings.YOOKASSA_WEBHOOK_AUTH or settings.YOOKASSA_WEBHOOK_SECRET:
-        if not yookassa.is_valid_webhook_auth(
-            request.headers.get("authorization"),
-            request.headers.get("x-webhook-secret"),
-        ):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook auth")
+@router.post("/api/payments/anypay-webhook")
+async def anypay_webhook(request: Request, session: AsyncSession = Depends(get_write_session)):
+    form_data = await request.form()
+    merchant_id = form_data.get("merchant_id")
+    amount = form_data.get("amount")
+    pay_id = form_data.get("pay_id", "")
+    status_pay = form_data.get("status")
+    received_sign = form_data.get("sign")
+    transaction_id = form_data.get("transaction_id", "unknown")
+    currency = form_data.get("currency", "RUB")
+    
+    if not all([merchant_id, amount, pay_id, received_sign]):
+        return Response(content="ERROR: Missing parameters", status_code=400)
 
-    allowed = await asyncio.to_thread(rate_limiter.allow, f"yk:{client_ip}", settings.YOOKASSA_RATE_LIMIT_PER_MINUTE, 60, fail_open=False)
-    if not allowed:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
+    secret = get_env("ANYPAY_SECRET_KEY", "")
 
-    notification = yookassa.parse_notification(payload)
-    if notification is None or notification.event != "payment.succeeded":
-        return {"status": "ignored"}
-        
-    payment_obj = notification.object
-    payload_event_id = str(payload.get("id") or "")
-    event_id = payload_event_id or (getattr(notification, "event", "") + ":" + payment_obj.id)
+    # ОФИЦИАЛЬНЫЙ алгоритм AnyPay для вебхуков
+    sign_str_official = f"{currency}:{amount}:{pay_id}:{merchant_id}:{status_pay}:{secret}"
+    calc_sign_official = hashlib.sha256(sign_str_official.encode('utf-8')).hexdigest()
 
-    if settings.YOOKASSA_WEBHOOK_REQUIRE_API_VERIFY:
-        remote_payment = await yookassa.fetch_remote_payment(payment_obj.id)
-        if remote_payment is None or remote_payment.status != "succeeded":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Payment verification failed")
+    # Твой СТАРЫЙ алгоритм (на случай если у тебя legacy-настройки в кассе)
+    sign_str_fallback = f"{merchant_id}:{amount}:{pay_id}:{secret}"
+    calc_sign_fallback = hashlib.sha256(sign_str_fallback.encode('utf-8')).hexdigest()
+
+    if received_sign not in [calc_sign_official, calc_sign_fallback]:
+        debug_msg = f"ERROR. We tried official: '{sign_str_official}' and fallback: '{sign_str_fallback}'. Secret is {len(secret)} chars."
+        logger.error(f"[ANYPAY] {debug_msg} Got: {received_sign}")
+        return Response(content=debug_msg, status_code=403)
             
-    billing: BillingService = get_billing_service(session)
-    payment = await billing.payments.get_by_payment_id_for_update(payment_obj.id)
-    if payment is None:
-        logger.warning("Webhook payment not found", extra=log_context(payment_id=payment_obj.id, action_source="webhook"))
-        return {"status": "not_found"}
-
-    if payment.processed_event_id == event_id:
-        return {"status": "duplicate"}
-
-    if payment.amount != Decimal(payment_obj.amount.value) or payment_obj.amount.currency != "RUB":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount mismatch")
-
-    if str(payment.user_id) != str(payment_obj.metadata.get("user_id")) or payment_obj.paid is not True:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Metadata mismatch")
-
-    is_fresh_event = await asyncio.to_thread(replay_guard.mark_if_fresh, event_id, settings.WEBHOOK_REPLAY_TTL_SECONDS)
-    if not is_fresh_event:
-        logger.info("Duplicate/replayed webhook blocked", extra=log_context(event_id=event_id, payment_id=payment_obj.id, action_source="webhook"))
-        return {"status": "duplicate"}
-
-    if not await billing.activate_payment(payment_obj.id, event_id):
-        return {"status": "retry"}
+    if status_pay != "paid":
+        return Response(content="OK", status_code=200)
 
     try:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Перейти в личный кабинет", callback_data="open_profile")]])
-        user = await session.get(User, payment.user_id)
-        if user:
-            period_text = "на 1 год" if float(payment.amount) == 900.0 else "на 3 месяца" if float(payment.amount) == 250.0 else "на 1 месяц"
-            await bot.send_message(chat_id=user.telegram_id, text=f"✅ <b>Оплата успешно получена!</b>\nВы оформили/продлили подписку <b>{period_text}</b>.", parse_mode="HTML", reply_markup=keyboard)
+        pay_id_str = str(pay_id)
+        if len(pay_id_str) <= 11:
+            tg_id = int(pay_id_str)
+        else:
+            tg_id = int(pay_id_str[:-3])
+            
+        amt = float(amount)
+        days = 365 if amt >= 900 else 90 if amt >= 250 else 30
+        await activate_subscription(session, tg_id, days, "anypay", transaction_id)
     except Exception as e:
-        logger.error("Failed to send payment confirmation to Telegram", extra=log_context(error=str(e), user_id=payment.user_id, payment_id=payment_obj.id))
-        
-    return {"status": "ok"}
+        logger.error(f"AnyPay Webhook Error: {e}")
+
+    return Response(content="OK", status_code=200)
+
+@router.post("/api/cryptobot/webhook")
+async def cryptobot_webhook(request: Request, session: AsyncSession = Depends(get_write_session)):
+    body = await request.body()
+    signature = request.headers.get("crypto-pay-api-signature")
+    if not signature: return Response(status_code=400, content="Missing signature")
+    CRYPTOBOT_TOKEN = get_env("CRYPTOBOT_TOKEN", "")
+    secret = hashlib.sha256(CRYPTOBOT_TOKEN.encode('utf-8')).digest()
+    calc_signature = hmac.new(secret, body, digestmod=hashlib.sha256).hexdigest()
+    if calc_signature != signature: return Response(status_code=403, content="Invalid signature")
+    try:
+        data = json.loads(body)
+        if data.get("update_type") == "invoice_paid":
+            payload_str = data["payload"]["payload"]
+            invoice_id = str(data["payload"]["invoice_id"])
+            parts = payload_str.split("_")
+            if len(parts) >= 2: await activate_subscription(session, int(parts[0]), int(parts[1]), "crypto", invoice_id)
+    except Exception: pass
+    return Response(status_code=200, content="OK")

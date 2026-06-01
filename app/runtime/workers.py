@@ -147,9 +147,10 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
         await asyncio.sleep(interval_seconds)
 
 # --- МИКРО-ТАСКА 4: ИДЕМПОТЕНТНЫЕ УВЕДОМЛЕНИЯ О ПОДПИСКЕ (Раз в час) ---
+from aiogram.types import URLInputFile
+
 def _ensure_aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-
 
 def _notification_type_for_hours_left(hours_left: float) -> str | None:
     if 48 < hours_left <= 72:
@@ -159,7 +160,6 @@ def _notification_type_for_hours_left(hours_left: float) -> str | None:
     if 0 < hours_left <= 12:
         return "0_days"
     return None
-
 
 async def _claim_subscription_notification(user: dict, notify_type: str, now: datetime) -> int | None:
     async with async_session_maker() as session:
@@ -190,13 +190,11 @@ async def _claim_subscription_notification(user: dict, notify_type: str, now: da
             else:
                 marker.status = "processing"
                 marker.locked_at = now
-
             await session.commit()
             return marker.id
         except IntegrityError:
             await session.rollback()
             return None
-
 
 async def _finalize_subscription_notification(marker_id: int, *, sent: bool, error: str | None = None) -> None:
     async with async_session_maker() as session:
@@ -216,8 +214,10 @@ async def _finalize_subscription_notification(marker_id: int, *, sent: bool, err
             marker.retry_at = now + timedelta(minutes=30)
         await session.commit()
 
-
 async def notification_loop(interval_seconds: int = 3600) -> None:
+    # URL картинки баннера (Замени на свой из @telegraph)
+    IMAGE_URL = "https://telegra.ph/file/18a2872bc9dafb527a054.png"
+    
     while True:
         try:
             now = datetime.now(timezone.utc)
@@ -234,56 +234,74 @@ async def notification_loop(interval_seconds: int = 3600) -> None:
                     }
                     for user in active_users
                 ]
-
             for user in snapshots:
                 delta = user["sub_end_date"] - now
                 hours_left = delta.total_seconds() / 3600
                 if hours_left <= 0:
                     continue
-
                 notify_type = _notification_type_for_hours_left(hours_left)
                 if not notify_type:
                     continue
-
+                
                 marker_id = await _claim_subscription_notification(user, notify_type, now)
                 if marker_id is None:
                     continue
-
+                    
                 try:
-                    uuid_short = str(user["vless_uuid"])[:8]
-                    end_msk = (user["sub_end_date"] + timedelta(hours=3)).strftime("%d.%m.%Y, %H:%M")
+                    # Генерируем красивый номер подписки (последние 6 цифр TG ID)
+                    sub_id = str(user["telegram_id"])[-6:]
+                    
+                    end_msk = (user["sub_end_date"] + timedelta(hours=3)).strftime("%d.%m.%Y %H:%M")
+                    
+                    # Человекочитаемое время
                     d_left = int(hours_left // 24)
                     h_left = int(hours_left % 24)
                     time_str = f"{d_left} дн. {h_left} ч." if d_left > 0 else f"{h_left} ч."
 
                     msg = (
-                        f"<b>Уведомление по подписке <code>{uuid_short}</code>:</b>\n\n"
-                        f"⚠️ <b>Ваш тариф скоро закончится.</b>\n"
-                        f"Выберите актуальный тариф, чтобы продолжить использование сервиса.\n\n"
-                        f"<b>Статус подписки:</b>\n"
-                        f"<blockquote>⏳ Осталось времени: {time_str}\n"
-                        f"📅 Дата окончания: {end_msk} (МСК)</blockquote>\n\n"
-                        f"<i>Успейте продлить выгодно, при истечении подписки доступ прекратится 👇</i>"
+                        f"⏰ <b>Подписка #{sub_id} почти закончилась</b>
+
+"
+                        f"Осталось совсем немного — <b>{time_str}</b>
+"
+                        f"📅 Дата отключения: <code>{end_msk} (МСК)</code>
+
+"
+                        f"Позаботьтесь об этом заранее — продлите подписку, и интернет будет работать без пауз 💙"
                     )
+                    
+                    # Прямая ссылка на бота, чтобы вызвать меню оплаты
                     kb = InlineKeyboardMarkup(
                         inline_keyboard=[[
                             InlineKeyboardButton(
-                                text="👤 Личный кабинет",
-                                url=f"https://{settings.WEBHOOK_URL_DOMAIN}/cabinet/{user['vless_uuid']}",
+                                text="💰 Оплатить подписку",
+                                url="https://t.me/ankovpn_bot?start=pay"
                             )
                         ]]
                     )
-                    await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML", reply_markup=kb)
+                    
+                    try:
+                        # Пытаемся отправить с красивой картинкой
+                        await bot.send_photo(
+                            chat_id=int(user["telegram_id"]), 
+                            photo=URLInputFile(IMAGE_URL),
+                            caption=msg, 
+                            parse_mode="HTML", 
+                            reply_markup=kb
+                        )
+                    except Exception as photo_exc:
+                        logger.warning(f"Failed to send photo for {user['telegram_id']}, falling back to text. Error: {photo_exc}")
+                        # Фоллбек: если картинка не загрузилась, шлем обычным текстом
+                        await bot.send_message(
+                            chat_id=int(user["telegram_id"]), 
+                            text=msg, 
+                            parse_mode="HTML", 
+                            reply_markup=kb
+                        )
+
                     await _finalize_subscription_notification(marker_id, sent=True)
                 except Exception as exc:
-                    logger.exception(
-                        "Failed to send subscription notification",
-                        extra=log_context(
-                            telegram_id=user["telegram_id"],
-                            event_id=str(marker_id),
-                            action_source="notification_loop",
-                        ),
-                    )
+                    logger.exception("Failed to send subscription notification")
                     await _finalize_subscription_notification(marker_id, sent=False, error=str(exc))
         except Exception as exc:
             logger.exception("Notification Loop Error: %s", exc)

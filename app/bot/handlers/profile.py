@@ -1,5 +1,6 @@
 import logging
 from aiogram import F, Router
+from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.bot.keyboards.main import main_keyboard, main_inline_keyboard
@@ -83,6 +84,7 @@ async def _fetch_user_traffic_bytes(telegram_id: int, session) -> int:
     except Exception:
         return 0
 
+@router.message(Command("profile"))
 @router.message(F.text.in_({"Профиль", "👤 Профиль"}))
 async def profile_handler(message: Message, user_service: UserService, session) -> None:
     user = await user_service.get_by_telegram_id(message.from_user.id)
@@ -156,7 +158,7 @@ async def force_check_payment_callback(callback: CallbackQuery):
     from app.core.container import get_billing_service
     from app.db.database import async_session_maker
     
-    support_link = "https://t.me/BarsikSneg"
+    support_link = "https://t.me/ankovpn_support_bot"
     
     async with async_session_maker() as session:
         billing = get_billing_service(session)
@@ -223,3 +225,27 @@ async def force_check_payment_callback(callback: CallbackQuery):
         except Exception:
             pass
         await callback.answer("❌ Платёж отклонён.", show_alert=True)
+
+@router.message(Command("help"))
+@router.message(F.text.in_({"📖 Инструкция", "Помощь", "Поддержка"}))
+async def help_command_handler(message: Message) -> None:
+    text = (
+        "💡 <b>Помощь и устранение неполадок</b>\n\n"
+        "Если VPN не подключается, выполните эти шаги перед обращением в поддержку:\n\n"
+        "1. <b>Синхронизация:</b> После оплаты или первой активации ключа серверам может потребоваться пара минут на применение настроек. Немного подождите.\n"
+        "2. <b>Перевыпуск ключа:</b> Перейдите в раздел «🆘 Не работает VPN» и нажмите «Перевыпустить ключ». Это принудительно обновит конфигурацию и сбросит зависшую сессию.\n"
+        "3. <b>Проверка доступности:</b> В вашем приложении-клиенте нажмите на иконку <b>спидометра</b> (проверка задержки/ping). Если рядом с профилем появились цифры — сервер доступен и работает штатно.\n\n"
+        "<i>Если базовые шаги не помогли — ознакомьтесь с подробной инструкцией или свяжитесь с нами.</i>"
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📖 Открыть инструкцию", url="https://neurosmmai.ru/setup")],
+        [InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/ankovpn_support_bot")]
+    ])
+    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+
+from app.bot.keyboards.main import os_select_keyboard
+
+@router.callback_query(F.data == "change_os_menu")
+async def change_os_menu_handler(callback: CallbackQuery):
+    await callback.message.edit_text("Выберите вашу новую операционную систему:", reply_markup=os_select_keyboard)
+    await callback.answer()

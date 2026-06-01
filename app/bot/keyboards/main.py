@@ -23,7 +23,7 @@ main_inline_keyboard = InlineKeyboardMarkup(
         ],
         [
             InlineKeyboardButton(text="📖 Инструкция", url="https://neurosmmai.ru/setup"),
-            InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/BarsikSneg")
+            InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/ankovpn_support_bot")
         ]
     ]
 )
