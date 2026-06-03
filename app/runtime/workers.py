@@ -13,7 +13,7 @@ from app.services.transaction import session_scope
 from app.services.xray_manager import XrayManager
 from app.services.user_lifecycle import delete_user_with_relations
 from app.core.settings import settings
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,11 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
                 repo = OutboxRepository(session)
                 events = await repo.claim_pending_batch(limit=50)
                 event_snapshots = [{"id": e.id, "event_type": e.event_type, "payload_json": e.payload_json} for e in events]
+            
             if not event_snapshots:
                 await asyncio.sleep(interval_seconds)
                 continue
+                
             outcomes = {}
             for event in event_snapshots:
                 try:
@@ -41,6 +43,7 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
                     outcomes[event["id"]] = (ok, None if ok else "xray call returned false")
                 except Exception as exc:
                     outcomes[event["id"]] = (False, str(exc))
+                    
             async with session_scope(async_session_maker) as session:
                 repo = OutboxRepository(session)
                 db_events = (await session.execute(select(OutboxEvent).where(OutboxEvent.id.in_(list(outcomes.keys()))))).scalars().all()
@@ -49,9 +52,12 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
                     event = by_id.get(event_id)
                     if not event: continue
                     if ok:
-                        repo.mark_processed(event); delivered += 1
+                        repo.mark_processed(event)
+                        delivered += 1
                     else:
-                        repo.mark_failed(event, err or "error"); failed += 1
+                        repo.mark_failed(event, err or "error")
+                        failed += 1
+                        
             if failed: logger.warning(f"Outbox delivery: {failed} failed, {delivered} delivered")
         except Exception as exc:
             logger.exception("Outbox Loop Error: %s", exc)
@@ -65,9 +71,7 @@ async def traffic_stats_loop(interval_seconds: int = 60) -> None:
             stats = await xray.get_live_traffic_stats(reset=True)
             if stats:
                 async with session_scope(async_session_maker) as session:
-                    users = (
-                        await session.execute(select(User).where(User.telegram_id.in_([int(k) for k in stats.keys() if str(k).isdigit()])))
-                    ).scalars().all()
+                    users = (await session.execute(select(User).where(User.telegram_id.in_([int(k) for k in stats.keys() if str(k).isdigit()])))).scalars().all()
                     for user in users:
                         added_traffic = stats.get(str(user.telegram_id), 0)
                         if added_traffic > 0:
@@ -83,110 +87,70 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
         try:
             now = datetime.now(timezone.utc)
             async with async_session_maker() as session:
-                expired_rows = (
-                    await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date < now))
-                ).scalars().all()
-                expired_snapshots = [
-                    {"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}
-                    for user in expired_rows
-                ]
-
+                expired_rows = (await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date < now))).scalars().all()
+                expired_snapshots = [{"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid} for user in expired_rows]
+                
                 deadline = now - timedelta(days=7)
-                delete_rows = (
-                    await session.execute(select(User).where(User.is_active.is_(False), User.sub_end_date < deadline))
-                ).scalars().all()
-                delete_snapshots = [
-                    {"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}
-                    for user in delete_rows
-                ]
-
+                delete_rows = (await session.execute(select(User).where(User.is_active.is_(False), User.sub_end_date < deadline))).scalars().all()
+                delete_snapshots = [{"id": user.id, "telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid} for user in delete_rows]
+                
             expired_results: dict[int, bool] = {}
             for user in expired_snapshots:
                 removed = await xray.remove_client(email=str(user["telegram_id"]))
                 expired_results[user["id"]] = removed
                 if removed:
-                    msg = (
-                        f"🔴 <b>Срок действия подписки завершён!</b>\n\n"
-                        f"Доступ к VPN ограничен. Вы можете продлить подписку в любой момент через меню бота."
-                    )
+                    msg = "🔴 <b>Срок действия подписки завершён!</b>\n\nДоступ к VPN ограничен. Вы можете продлить подписку в любой момент через меню бота."
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Личный кабинет", url=f"https://neurosmmai.ru/cabinet/{user['vless_uuid']}")]])
                     try:
                         await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML", reply_markup=kb)
-                    except Exception:
-                        logger.exception(
-                            "Failed to send subscription expiry notification",
-                            extra=log_context(telegram_id=user["telegram_id"], action_source="expiry_loop"),
-                        )
-
+                    except Exception: pass
+                        
             delete_results: dict[int, bool] = {}
             for user in delete_snapshots:
                 delete_results[user["id"]] = await xray.remove_client(email=str(user["telegram_id"]))
                 msg = "🗑️ <b>Ваш профиль удален.</b>\n\nВы не продлевали подписку более 7 дней. Для возвращения создайте профиль заново."
                 try:
                     await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML")
-                except Exception:
-                    logger.exception(
-                        "Failed to send profile deletion notification",
-                        extra=log_context(telegram_id=user["telegram_id"], action_source="expiry_loop"),
-                    )
-
+                except Exception: pass
+                        
             async with session_scope(async_session_maker) as session:
                 for user_id, removed in expired_results.items():
-                    if not removed:
-                        continue
+                    if not removed: continue
                     user = await session.get(User, user_id)
-                    if user:
-                        user.is_active = False
-
+                    if user: user.is_active = False
                 for user_id in delete_results:
                     user = await session.get(User, user_id)
-                    if user:
-                        await delete_user_with_relations(session, user)
+                    if user: await delete_user_with_relations(session, user)
         except Exception as exc:
             logger.exception("Expiry Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)
 
-# --- МИКРО-ТАСКА 4: ИДЕМПОТЕНТНЫЕ УВЕДОМЛЕНИЯ О ПОДПИСКЕ (Раз в час) ---
-from aiogram.types import URLInputFile
-
+# --- МИКРО-ТАСКА 4: ИДЕМПОТЕНТНЫЕ УВЕДОМЛЕНИЯ ---
 def _ensure_aware(value: datetime) -> datetime:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 def _notification_type_for_hours_left(hours_left: float) -> str | None:
-    if 48 < hours_left <= 72:
-        return "3_days"
-    if 12 < hours_left <= 24:
-        return "1_day"
-    if 0 < hours_left <= 12:
-        return "0_days"
+    if 48 < hours_left <= 72: return "3_days"
+    if 12 < hours_left <= 24: return "1_day"
+    if 0 < hours_left <= 12: return "0_days"
     return None
 
 async def _claim_subscription_notification(user: dict, notify_type: str, now: datetime) -> int | None:
     async with async_session_maker() as session:
         try:
-            marker = await session.scalar(
-                select(SubscriptionNotification).where(
-                    SubscriptionNotification.user_id == user["id"],
-                    SubscriptionNotification.notify_type == notify_type,
-                    SubscriptionNotification.sub_end_date == user["sub_end_date"],
-                )
-            )
+            marker = await session.scalar(select(SubscriptionNotification).where(
+                SubscriptionNotification.user_id == user["id"],
+                SubscriptionNotification.notify_type == notify_type,
+                SubscriptionNotification.sub_end_date == user["sub_end_date"]
+            ))
             stale_processing_cutoff = now - timedelta(minutes=10)
+            
             if marker is None:
-                marker = SubscriptionNotification(
-                    user_id=user["id"],
-                    notify_type=notify_type,
-                    sub_end_date=user["sub_end_date"],
-                    status="processing",
-                    locked_at=now,
-                )
+                marker = SubscriptionNotification(user_id=user["id"], notify_type=notify_type, sub_end_date=user["sub_end_date"], status="processing", locked_at=now)
                 session.add(marker)
-            elif marker.status == "sent":
-                return None
-            elif marker.status == "processing" and marker.locked_at and _ensure_aware(marker.locked_at) > stale_processing_cutoff:
-                return None
-            elif marker.retry_at and _ensure_aware(marker.retry_at) > now:
-                return None
+            elif marker.status == "sent": return None
+            elif marker.status == "processing" and marker.locked_at and _ensure_aware(marker.locked_at) > stale_processing_cutoff: return None
+            elif marker.retry_at and _ensure_aware(marker.retry_at) > now: return None
             else:
                 marker.status = "processing"
                 marker.locked_at = now
@@ -199,8 +163,7 @@ async def _claim_subscription_notification(user: dict, notify_type: str, now: da
 async def _finalize_subscription_notification(marker_id: int, *, sent: bool, error: str | None = None) -> None:
     async with async_session_maker() as session:
         marker = await session.get(SubscriptionNotification, marker_id)
-        if marker is None:
-            return
+        if marker is None: return
         now = datetime.now(timezone.utc)
         marker.locked_at = None
         if sent:
@@ -215,93 +178,44 @@ async def _finalize_subscription_notification(marker_id: int, *, sent: bool, err
         await session.commit()
 
 async def notification_loop(interval_seconds: int = 3600) -> None:
-    # URL картинки баннера (Замени на свой из @telegraph)
     IMAGE_URL = "https://telegra.ph/file/18a2872bc9dafb527a054.png"
-    
     while True:
         try:
             now = datetime.now(timezone.utc)
             async with async_session_maker() as session:
-                active_users = (await session.execute(
-                    select(User).where(User.is_active.is_(True), User.sub_end_date.is_not(None))
-                )).scalars().all()
-                snapshots = [
-                    {
-                        "id": user.id,
-                        "telegram_id": user.telegram_id,
-                        "vless_uuid": user.vless_uuid,
-                        "sub_end_date": _ensure_aware(user.sub_end_date),
-                    }
-                    for user in active_users
-                ]
+                active_users = (await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date.is_not(None)))).scalars().all()
+                snapshots = [{"id": u.id, "telegram_id": u.telegram_id, "vless_uuid": u.vless_uuid, "sub_end_date": _ensure_aware(u.sub_end_date)} for u in active_users]
+                
             for user in snapshots:
-                delta = user["sub_end_date"] - now
-                hours_left = delta.total_seconds() / 3600
-                if hours_left <= 0:
-                    continue
+                hours_left = (user["sub_end_date"] - now).total_seconds() / 3600
+                if hours_left <= 0: continue
+                
                 notify_type = _notification_type_for_hours_left(hours_left)
-                if not notify_type:
-                    continue
+                if not notify_type: continue
                 
                 marker_id = await _claim_subscription_notification(user, notify_type, now)
-                if marker_id is None:
-                    continue
-                    
+                if marker_id is None: continue
+                
                 try:
-                    # Генерируем красивый номер подписки (последние 6 цифр TG ID)
                     sub_id = str(user["telegram_id"])[-6:]
-                    
                     end_msk = (user["sub_end_date"] + timedelta(hours=3)).strftime("%d.%m.%Y %H:%M")
-                    
-                    # Человекочитаемое время
-                    d_left = int(hours_left // 24)
-                    h_left = int(hours_left % 24)
+                    d_left, h_left = int(hours_left // 24), int(hours_left % 24)
                     time_str = f"{d_left} дн. {h_left} ч." if d_left > 0 else f"{h_left} ч."
-
-                    msg = (
-                        f"⏰ <b>Подписка #{sub_id} почти закончилась</b>
-
-"
-                        f"Осталось совсем немного — <b>{time_str}</b>
-"
-                        f"📅 Дата отключения: <code>{end_msk} (МСК)</code>
-
-"
-                        f"Позаботьтесь об этом заранее — продлите подписку, и интернет будет работать без пауз 💙"
-                    )
                     
-                    # Прямая ссылка на бота, чтобы вызвать меню оплаты
-                    kb = InlineKeyboardMarkup(
-                        inline_keyboard=[[
-                            InlineKeyboardButton(
-                                text="💰 Оплатить подписку",
-                                url="https://t.me/ankovpn_bot?start=pay"
-                            )
-                        ]]
-                    )
+                    msg = (f"⏰ <b>Подписка #{sub_id} почти закончилась</b>\n"
+                           f"Осталось совсем немного — <b>{time_str}</b>\n"
+                           f"📅 Дата отключения: <code>{end_msk} (МСК)</code>\n"
+                           f"Позаботьтесь об этом заранее — продлите подписку, и интернет будет работать без пауз 💙")
+                           
+                    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="💰 Оплатить подписку", url="https://t.me/ankovpn_bot?start=pay")]])
                     
                     try:
-                        # Пытаемся отправить с красивой картинкой
-                        await bot.send_photo(
-                            chat_id=int(user["telegram_id"]), 
-                            photo=URLInputFile(IMAGE_URL),
-                            caption=msg, 
-                            parse_mode="HTML", 
-                            reply_markup=kb
-                        )
-                    except Exception as photo_exc:
-                        logger.warning(f"Failed to send photo for {user['telegram_id']}, falling back to text. Error: {photo_exc}")
-                        # Фоллбек: если картинка не загрузилась, шлем обычным текстом
-                        await bot.send_message(
-                            chat_id=int(user["telegram_id"]), 
-                            text=msg, 
-                            parse_mode="HTML", 
-                            reply_markup=kb
-                        )
-
+                        await bot.send_photo(chat_id=int(user["telegram_id"]), photo=URLInputFile(IMAGE_URL), caption=msg, parse_mode="HTML", reply_markup=kb)
+                    except Exception:
+                        await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML", reply_markup=kb)
+                        
                     await _finalize_subscription_notification(marker_id, sent=True)
                 except Exception as exc:
-                    logger.exception("Failed to send subscription notification")
                     await _finalize_subscription_notification(marker_id, sent=False, error=str(exc))
         except Exception as exc:
             logger.exception("Notification Loop Error: %s", exc)

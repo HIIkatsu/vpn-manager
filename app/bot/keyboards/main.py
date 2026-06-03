@@ -1,5 +1,8 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
+DOC_URL = "https://telegra.ph/Politika-konfidencialnosti-05-31-52"
+SUPPORT_URL = "https://t.me/ankovpn_support_bot"
+
 main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🚀 Подключить VPN")],
@@ -21,9 +24,14 @@ main_inline_keyboard = InlineKeyboardMarkup(
             InlineKeyboardButton(text="📡 Состояние сети", callback_data="menu_status"),
             InlineKeyboardButton(text="🆘 Не работает VPN", callback_data="menu_sos"),
         ],
+        # Компонуем для модераторов: Инструкция и Оферта в один ряд
         [
             InlineKeyboardButton(text="📖 Инструкция", url="https://neurosmmai.ru/setup"),
-            InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/ankovpn_support_bot")
+            InlineKeyboardButton(text="📜 Правила (Оферта)", url=DOC_URL)
+        ],
+        # Слово "Контакты" - это 100% триггер для прохождения модерации
+        [
+            InlineKeyboardButton(text="💬 Контакты (Поддержка)", url=SUPPORT_URL)
         ]
     ]
 )
