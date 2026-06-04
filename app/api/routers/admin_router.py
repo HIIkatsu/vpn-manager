@@ -23,6 +23,7 @@ from app.services.transaction import session_scope
 from app.services.traffic_stats_service import TrafficStatsService
 from app.services.user_lifecycle import delete_user_with_relations
 from app.services.xray_manager import XrayManager
+from app.services.node_sync import ActivePushDispatcher
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -221,19 +222,22 @@ async def admin_apply(admin=Depends(get_current_admin)):
             action_snapshots.append(snapshot)
     
     outcomes: dict[int, bool] = {}
-    xray = XrayManager()
+    dispatcher = ActivePushDispatcher()
     
     for action in action_snapshots:
         success = False
+        error = None
         try:
             action_type = action["action_type"]
             if action_type == "add":
                 payload = action.get("payload") or {}
-                success = await xray.add_client(email=str(payload["telegram_id"]), uuid=str(payload["vless_uuid"]))
+                success, error = await dispatcher.add_client(telegram_id=payload["telegram_id"], uuid=str(payload["vless_uuid"]), event_id=f"admin:{action['id']}")
             elif action_type in ("toggle_disable", "delete") and action.get("telegram_id"):
-                success = await xray.remove_client(email=str(action["telegram_id"]))
+                success, error = await dispatcher.remove_client(telegram_id=action["telegram_id"], event_id=f"admin:{action['id']}")
             elif action_type == "toggle_enable" and action.get("telegram_id") and action.get("vless_uuid"):
-                success = await xray.add_client(email=str(action["telegram_id"]), uuid=str(action["vless_uuid"]))
+                success, error = await dispatcher.add_client(telegram_id=action["telegram_id"], uuid=str(action["vless_uuid"]), event_id=f"admin:{action['id']}")
+            if error:
+                logger.warning("Failed to active-push admin action: %s", error)
         except Exception:
             logger.exception("Failed to deliver pending action to Xray")
         outcomes[action["id"]] = success

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.handlers.profile import get_profile_data
 from app.core.settings import settings
 from app.services.user_service import UserService
+from app.services.node_sync import ActivePushDispatcher
 from app.bot.keyboards.main import main_inline_keyboard, main_keyboard, os_select_keyboard
 
 router = Router()
@@ -182,15 +183,21 @@ async def sos_regen_ask_callback(callback: CallbackQuery) -> None:
 async def sos_regen_confirm_callback(callback: CallbackQuery, user_service: UserService, session: AsyncSession) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if not user: return
-    user.is_active = False
-    session.add(user)
-    await session.commit()
+    dispatcher = ActivePushDispatcher()
     await callback.message.edit_text("⏳ Уничтожаем старые сессии...")
+    removed, _ = await dispatcher.remove_client(telegram_id=user.telegram_id, event_id=f"regen-remove:{user.id}")
+    if not removed:
+        await callback.message.edit_text("⚠️ Не удалось удалить старый профиль на всех серверах. Попробуйте ещё раз через несколько минут.")
+        return
     await asyncio.sleep(4)
     user.vless_uuid = str(uuid.uuid4())
     user.is_active = True
     session.add(user)
     await session.commit()
+    added, _ = await dispatcher.add_client(telegram_id=user.telegram_id, uuid=user.vless_uuid, event_id=f"regen-add:{user.id}")
+    if not added:
+        await callback.message.edit_text("⚠️ Новый профиль сохранён, но пока доставлен не на все серверы. Попробуйте перевыпустить ключ ещё раз через несколько минут.")
+        return
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Подключить новый VPN", callback_data="menu_connect")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_main")]
