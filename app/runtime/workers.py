@@ -11,6 +11,7 @@ from app.db.models import OutboxEvent, SubscriptionNotification, User
 from app.db.repositories.outbox_repo import OutboxRepository
 from app.services.transaction import session_scope
 from app.services.xray_manager import XrayManager
+from app.services.node_sync import ActivePushDispatcher
 from app.services.user_lifecycle import delete_user_with_relations
 from app.core.settings import settings
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, URLInputFile
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # --- МИКРО-ТАСКА 1: МГНОВЕННАЯ ДОСТАВКА СОБЫТИЙ ---
 async def outbox_loop(interval_seconds: int = 5) -> None:
-    xray = XrayManager()
+    dispatcher = ActivePushDispatcher()
     while True:
         try:
             delivered, failed = 0, 0
@@ -37,10 +38,12 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
                 try:
                     payload = json.loads(event["payload_json"])
                     if event["event_type"] == "xray.add_client":
-                        ok = await xray.add_client(email=str(payload["telegram_id"]), uuid=payload["uuid"])
+                        ok, err = await dispatcher.add_client(telegram_id=payload["telegram_id"], uuid=payload["uuid"], event_id=event["id"])
+                    elif event["event_type"] == "xray.remove_client":
+                        ok, err = await dispatcher.remove_client(telegram_id=payload["telegram_id"], event_id=event["id"])
                     else:
-                        ok = False
-                    outcomes[event["id"]] = (ok, None if ok else "xray call returned false")
+                        ok, err = False, f"unsupported event type {event['event_type']}"
+                    outcomes[event["id"]] = (ok, err)
                 except Exception as exc:
                     outcomes[event["id"]] = (False, str(exc))
                     
@@ -82,7 +85,7 @@ async def traffic_stats_loop(interval_seconds: int = 60) -> None:
 
 # --- МИКРО-ТАСКА 3: ОЧИСТКА И УДАЛЕНИЕ ИСТЕКШИХ ---
 async def expiry_loop(interval_seconds: int = 900) -> None:
-    xray = XrayManager()
+    dispatcher = ActivePushDispatcher()
     while True:
         try:
             now = datetime.now(timezone.utc)
@@ -96,8 +99,10 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
                 
             expired_results: dict[int, bool] = {}
             for user in expired_snapshots:
-                removed = await xray.remove_client(email=str(user["telegram_id"]))
+                removed, remove_error = await dispatcher.remove_client(telegram_id=user["telegram_id"], event_id=f"expire:{user['id']}")
                 expired_results[user["id"]] = removed
+                if remove_error:
+                    logger.warning("Failed to active-push expired user removal: %s", remove_error)
                 if removed:
                     msg = "🔴 <b>Срок действия подписки завершён!</b>\n\nДоступ к VPN ограничен. Вы можете продлить подписку в любой момент через меню бота."
                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 Личный кабинет", url=f"https://neurosmmai.ru/cabinet/{user['vless_uuid']}")]])
@@ -107,7 +112,10 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
                         
             delete_results: dict[int, bool] = {}
             for user in delete_snapshots:
-                delete_results[user["id"]] = await xray.remove_client(email=str(user["telegram_id"]))
+                removed, remove_error = await dispatcher.remove_client(telegram_id=user["telegram_id"], event_id=f"delete:{user['id']}")
+                delete_results[user["id"]] = removed
+                if remove_error:
+                    logger.warning("Failed to active-push deleted user removal: %s", remove_error)
                 msg = "🗑️ <b>Ваш профиль удален.</b>\n\nВы не продлевали подписку более 7 дней. Для возвращения создайте профиль заново."
                 try:
                     await bot.send_message(chat_id=int(user["telegram_id"]), text=msg, parse_mode="HTML")
@@ -118,7 +126,8 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
                     if not removed: continue
                     user = await session.get(User, user_id)
                     if user: user.is_active = False
-                for user_id in delete_results:
+                for user_id, removed in delete_results.items():
+                    if not removed: continue
                     user = await session.get(User, user_id)
                     if user: await delete_user_with_relations(session, user)
         except Exception as exc:

@@ -1,0 +1,19 @@
+[Unit]
+Description=Xray Active Push Receiver
+After=network-online.target xray.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/vpn-manager
+EnvironmentFile=/opt/vpn-manager/.env.node
+ExecStart=/opt/vpn-manager/.venv/bin/uvicorn deploy.active_push.xray_node_receiver:app --host 127.0.0.1 --port 8090
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
