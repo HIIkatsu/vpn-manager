@@ -1,4 +1,4 @@
-import urllib.parse, hashlib, time, aiohttp, asyncio
+import urllib.parse, hashlib, time, aiohttp, asyncio, logging
 from datetime import datetime, timedelta, timezone
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -11,18 +11,12 @@ from app.services.user_service import UserService
 from app.db.models.promocode import Promocode, UserPromocode
 from app.db.models import Payment
 from app.core.container import get_billing_service
+from app.core.settings import settings
 
 router = Router()
+logger = logging.getLogger(__name__)
 DOC_URL = "https://telegra.ph/Politika-konfidencialnosti-05-31-52"
 class PromoState(StatesGroup): waiting_for_promo = State()
-
-def get_env(key, default=""):
-    try:
-        with open("/root/vpn-manager-v2/.env", "r") as f:
-            for line in f:
-                if line.startswith(f"{key}="): return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except Exception: pass
-    return default
 
 def subscription_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -89,28 +83,31 @@ async def subscription_pay_callback(callback: CallbackQuery, user_service: UserS
         from app.services.yookassa_service import YooKassaService
         from app.db.repositories.payment_repo import PaymentRepository
         yk_service = YooKassaService()
-        yk_url = await yk_service.create_payment(PaymentRepository(session), user.id, amount, "https://t.me/ankovpn_bot")
+        yk_url = await yk_service.create_payment(PaymentRepository(session), user.id, amount, settings.PAYMENT_RETURN_URL)
         await session.commit()
-    except Exception: pass
+    except Exception:
+        logger.exception("Failed to create YooKassa payment")
 
-    ANYPAY_PROJECT_ID, ANYPAY_SECRET_KEY = get_env("ANYPAY_PROJECT_ID", "17784"), get_env("ANYPAY_SECRET_KEY", "")
-    anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
-    ap_params = {"merchant_id": ANYPAY_PROJECT_ID, "pay_id": anypay_pay_id, "amount": amount_str, "currency": "RUB", "desc": "VPN", "success_url": "https://t.me/ankovpn_bot", "fail_url": "https://t.me/ankovpn_bot", "sign": hashlib.sha256(f"{ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:https://t.me/ankovpn_bot:https://t.me/ankovpn_bot:{ANYPAY_SECRET_KEY}".encode()).hexdigest()}
-    anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(ap_params)}"
+    anypay_url = ""
+    if settings.ANYPAY_PROJECT_ID and settings.ANYPAY_SECRET_KEY:
+        anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
+        ap_params = {"merchant_id": settings.ANYPAY_PROJECT_ID, "pay_id": anypay_pay_id, "amount": amount_str, "currency": "RUB", "desc": "VPN", "success_url": settings.PAYMENT_RETURN_URL, "fail_url": settings.PAYMENT_RETURN_URL, "sign": hashlib.sha256(f"{settings.ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:{settings.PAYMENT_RETURN_URL}:{settings.PAYMENT_RETURN_URL}:{settings.ANYPAY_SECRET_KEY}".encode()).hexdigest()}
+        anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(ap_params)}"
 
-    crypto_url, CRYPTOBOT_TOKEN = "", get_env("CRYPTOBOT_TOKEN", "")
-    if CRYPTOBOT_TOKEN:
+    crypto_url = ""
+    if settings.CRYPTOBOT_TOKEN:
         try:
             async with aiohttp.ClientSession() as http_session:
-                async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": amount_ym, "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
+                async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": settings.CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": amount_ym, "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
                     if resp.status == 200:
                         res_data = await resp.json()
                         if res_data.get("ok"): crypto_url = res_data["result"].get("pay_url", "").replace("https://t.me/", "tg://resolve?domain=").replace("?start=", "&start=")
-        except Exception: pass
+        except Exception:
+            logger.exception("Failed to create CryptoBot invoice")
 
     kb = []
     if yk_url: kb.append([InlineKeyboardButton(text="💳 Карта РФ / СБП (ЮKassa)", url=yk_url)])
-    kb.append([InlineKeyboardButton(text="🔄 Запасной шлюз (AnyPay)", url=anypay_url)])
+    if anypay_url: kb.append([InlineKeyboardButton(text="🔄 Запасной шлюз (AnyPay)", url=anypay_url)])
     if crypto_url: kb.append([InlineKeyboardButton(text="🪙 Криптовалюта", url=crypto_url)])
     kb.append([InlineKeyboardButton(text="🔄 Проверить оплату", callback_data="check_payment_status")])
     kb.append([InlineKeyboardButton(text="🔙 Выбрать другой тариф", callback_data="menu_subscription")])
@@ -137,8 +134,10 @@ async def check_payment_status_callback(callback: CallbackQuery, user_service: U
                         await session.commit()
                         if res: payment_found = True
                         break
-                except Exception: pass
-    except Exception as e: print("Check error:", e)
+                except Exception:
+                    logger.exception("Failed to fetch YooKassa payment during manual check")
+    except Exception:
+        logger.exception("Manual payment status check failed")
 
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     now = datetime.now(timezone.utc)
@@ -147,14 +146,15 @@ async def check_payment_status_callback(callback: CallbackQuery, user_service: U
     if payment_found or (user.is_active and user.sub_end_date and user.sub_end_date > now):
         # 1. Сворачиваем старое сообщение в чек
         try: await callback.message.edit_text(f"🧾 <b>Счет оплачен</b>\n\n💎 Ваша подписка активна до: <code>{user.sub_end_date.strftime('%d.%m.%Y %H:%M')}</code>", parse_mode="HTML")
-        except Exception: pass
+        except Exception:
+            logger.exception("Failed to update paid invoice message")
         # 2. Шлем ОТДЕЛЬНЫЙ пуш
         if payment_found:
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 В личный кабинет", callback_data="menu_profile")]])
             await callback.bot.send_message(chat_id=callback.from_user.id, text="✅ <b>Оплата успешно получена!</b>\n\nПодписка продлена, приятного пользования!", parse_mode="HTML", reply_markup=kb)
     else:
         kb = callback.message.reply_markup.inline_keyboard
-        if not any("ankovpn_support_bot" in str(btn.url) for row in kb for btn in row): kb.append([InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/ankovpn_support_bot")])
+        if not any("ankovpn_support_bot" in str(btn.url) for row in kb for btn in row): kb.append([InlineKeyboardButton(text="💬 Написать в поддержку", url=settings.SUPPORT_URL)])
         text_lines = callback.message.html_text.split('\n')
         amount_line = text_lines[0] if text_lines else "🧾 <b>Счет на оплату</b>"
         await callback.message.edit_text(f"{amount_line}\n\n⏳ <b>Платеж еще обрабатывается...</b>\n\nОбычно банки подтверждают перевод за 1-2 минуты. Как только деньги поступят, бот <b>автоматически</b> пришлет вам уведомление.\n\n⏱ <i>Последняя проверка: {check_time} (MSK)</i>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))

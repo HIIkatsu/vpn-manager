@@ -3,28 +3,27 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-import base64, math, json, hmac, ipaddress, urllib.parse, hashlib, time, aiohttp, asyncio
+import base64, math, json, hmac, urllib.parse, hashlib, time, aiohttp, asyncio, logging
 from urllib.parse import quote
 from datetime import datetime, timezone
 
 from app.db.models import User, Payment
 from app.api.dependencies.common import get_read_session, get_write_session
 from app.core.settings import settings
-from app.core.security import ip_in_allowlist
+from app.core.security import SharedRateLimiter, client_ip_from_request, sign_subscription_token, verify_subscription_token
 from app.core.container import get_billing_service
 from app.bot.core import bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+logger = logging.getLogger(__name__)
+rate_limiter = SharedRateLimiter()
 
-def get_env(key, default=""):
-    try:
-        with open("/root/vpn-manager-v2/.env", "r") as f:
-            for line in f:
-                if line.startswith(f"{key}="): return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except Exception: pass
-    return default
+
+def _enforce_rate_limit(key: str, limit: int) -> None:
+    if not rate_limiter.allow(key, limit, 60):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many requests")
 
 def format_bytes(size_bytes: int) -> str:
     if not size_bytes or size_bytes == 0: return "0 B"
@@ -32,12 +31,21 @@ def format_bytes(size_bytes: int) -> str:
     p = math.pow(1024, i)
     return f"{round(size_bytes / p, 2)} {['B', 'KB', 'MB', 'GB', 'TB'][i]}"
 
-def _build_subscription_url(request: Request, user: User) -> str: return f"https://{getattr(settings, 'WEBHOOK_URL_DOMAIN', request.url.hostname)}/webhook/sub/{user.vless_uuid}"
+def _build_subscription_url(request: Request, user: User) -> str:
+    expires_at = int(time.time()) + settings.SUBSCRIPTION_TOKEN_TTL_SECONDS
+    signature = sign_subscription_token(str(user.vless_uuid), expires_at)
+    host = getattr(settings, "WEBHOOK_URL_DOMAIN", request.url.hostname)
+    return f"https://{host}/webhook/sub/{user.vless_uuid}?exp={expires_at}&sig={signature}"
 def _build_hiddify_deeplink(sub_url: str) -> str: return f"hiddify://install-config?url={quote(sub_url, safe='')}"
 
 # --- ГЕНЕРАТОР ПОДПИСОК ---
 @router.get("/webhook/sub/{uuid}")
-async def get_subscription(uuid: str, os: str = "android", session: AsyncSession = Depends(get_read_session)):
+async def get_subscription(request: Request, uuid: str, os: str = "android", exp: int | None = None, sig: str | None = None, session: AsyncSession = Depends(get_read_session)):
+    client_ip = client_ip_from_request(request)
+    _enforce_rate_limit(f"subscription:{uuid}:{client_ip}", settings.SUBSCRIPTION_RATE_LIMIT_PER_MINUTE)
+    if not (exp and sig and verify_subscription_token(uuid, exp, sig)):
+        if not settings.LEGACY_SUBSCRIPTION_URLS_ENABLED:
+            return Response(content="", status_code=403)
     user = (await session.execute(select(User).where(User.vless_uuid == uuid))).scalars().first()
     if not user or not user.is_active: return Response(content="", status_code=403)
 
@@ -85,6 +93,8 @@ async def root_instruction(request: Request): return templates.TemplateResponse(
 
 @router.get("/cabinet/{uuid}/status")
 async def payment_status(request: Request, uuid: str, session: AsyncSession = Depends(get_write_session)):
+    client_ip = client_ip_from_request(request)
+    _enforce_rate_limit(f"payment_status:{uuid}:{client_ip}", settings.PAYMENT_STATUS_RATE_LIMIT_PER_MINUTE)
     user = await session.scalar(select(User).where(User.vless_uuid == uuid))
     success = False
     
@@ -106,12 +116,15 @@ async def payment_status(request: Request, uuid: str, session: AsyncSession = De
                                 try:
                                     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 В личный кабинет", callback_data="menu_profile")]])
                                     await bot.send_message(chat_id=user.telegram_id, text="✅ <b>Оплата успешно получена!</b>\n\nПодписка продлена, приятного пользования!", parse_mode="HTML", reply_markup=kb)
-                                except Exception: pass
+                                except Exception:
+                                    logger.exception("Failed to send YooKassa payment status notification")
                                 break
-                        except Exception: pass
+                        except Exception:
+                            logger.exception("Failed to refresh YooKassa payment status")
                     if success: break
                     await asyncio.sleep(2.0)
-        except Exception: pass
+        except Exception:
+            logger.exception("Payment status refresh failed")
 
     if success:
         icon_html = '<div class="w-24 h-24 rounded-[2rem] bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-[0_0_40px_rgba(16,185,129,0.2)] relative"><i class="fa-solid fa-check text-5xl"></i><div class="absolute inset-0 bg-emerald-400/20 blur-2xl rounded-full z-[-1]"></div></div>'
@@ -136,24 +149,27 @@ async def web_pay(request: Request, uuid: str, amount: float, session: AsyncSess
         from app.db.repositories.payment_repo import PaymentRepository
         yk_url = await YooKassaService().create_payment(PaymentRepository(session), user.id, amount, return_url)
         await session.commit()
-    except Exception: pass
+    except Exception:
+        logger.exception("Failed to create YooKassa payment")
 
-    ANYPAY_PROJECT_ID, ANYPAY_SECRET_KEY = get_env("ANYPAY_PROJECT_ID", "17784"), get_env("ANYPAY_SECRET_KEY", "")
-    anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
-    ap_params = {"merchant_id": ANYPAY_PROJECT_ID, "pay_id": anypay_pay_id, "amount": amount_str, "currency": "RUB", "desc": "VPN", "success_url": return_url, "fail_url": return_url, "sign": hashlib.sha256(f"{ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:{return_url}:{return_url}:{ANYPAY_SECRET_KEY}".encode()).hexdigest()}
-    anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(ap_params)}"
+    anypay_url = ""
+    if settings.ANYPAY_PROJECT_ID and settings.ANYPAY_SECRET_KEY:
+        anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
+        ap_params = {"merchant_id": settings.ANYPAY_PROJECT_ID, "pay_id": anypay_pay_id, "amount": amount_str, "currency": "RUB", "desc": "VPN", "success_url": return_url, "fail_url": return_url, "sign": hashlib.sha256(f"{settings.ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:{return_url}:{return_url}:{settings.ANYPAY_SECRET_KEY}".encode()).hexdigest()}
+        anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(ap_params)}"
 
-    crypto_url, CRYPTOBOT_TOKEN = "", get_env("CRYPTOBOT_TOKEN", "")
-    if CRYPTOBOT_TOKEN:
+    crypto_url = ""
+    if settings.CRYPTOBOT_TOKEN:
         try:
             async with aiohttp.ClientSession() as http_session:
-                async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": str(int(amount)), "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
+                async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": settings.CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": str(int(amount)), "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
                     res_data = await resp.json()
                     if res_data.get("ok"): crypto_url = res_data["result"].get("pay_url", "").replace("https://t.me/", "tg://resolve?domain=").replace("?start=", "&start=")
-        except Exception: pass
+        except Exception:
+            logger.exception("Failed to create CryptoBot invoice")
 
     yk_btn_html = f'''<a href="{yk_url}" class="group block relative rounded-2xl bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 hover:border-brand-500 p-4 transition-all duration-200"><div class="absolute -top-2.5 right-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.5)]">Рекомендуем</div><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-brand-500/20 flex items-center justify-center text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-credit-card"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-brand-400 transition-colors">Карта РФ / СБП (ЮKassa)</div><div class="text-xs text-brand-400/80">Официальный банковский шлюз</div></div></div></a>''' if yk_url else ''
-    anypay_btn_html = f'''<a href="{anypay_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-rotate"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-emerald-400 transition-colors">Запасной шлюз (AnyPay)</div><div class="text-xs text-slate-400">СБП / Карты РФ</div></div></div></a>'''
+    anypay_btn_html = f'''<a href="{anypay_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-rotate"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-emerald-400 transition-colors">Запасной шлюз (AnyPay)</div><div class="text-xs text-slate-400">СБП / Карты РФ</div></div></div></a>''' if anypay_url else ''
     crypto_btn_html = f'''<a href="{crypto_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-blue-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:scale-110 transition-transform"><i class="fa-brands fa-bitcoin"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-blue-400 transition-colors">Криптовалюта</div><div class="text-xs text-slate-400">CryptoBot Telegram</div></div></div></a>''' if crypto_url else ''
 
     return HTMLResponse(content=f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Оплата тарифа | AnKo VPN</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script>tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}</script></head><body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white"><div class="max-w-md w-full"><div class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm"><i class="fa-solid fa-wallet absolute -right-6 -top-6 text-[100px] text-slate-700/10 rotate-12"></i><div class="relative z-10"><div class="text-center mb-8"><h2 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Счет на {int(amount)} ₽</h2><p class="text-slate-400 text-sm">Выберите способ оплаты</p></div><div class="space-y-3">{yk_btn_html}{anypay_btn_html}{crypto_btn_html}</div><a href="/cabinet/{uuid}" class="mt-8 flex items-center justify-center gap-2 w-full py-4 px-6 bg-dark-900/50 text-slate-400 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 hover:bg-slate-800/80"><i class="fa-solid fa-arrow-left"></i> Отмена</a></div></div></div></body></html>""")
@@ -168,7 +184,8 @@ async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depen
     end_date = user.sub_end_date.replace(tzinfo=timezone.utc) if user.sub_end_date and user.sub_end_date.tzinfo is None else user.sub_end_date
     days_left = max(0, (end_date - now).days) if end_date else 0
     traffic_bytes = user.traffic_total_bytes or 0
-    return templates.TemplateResponse(request=request, name="cabinet.html", context={"request": request, "user": user, "sub_url": _build_subscription_url(request, user), "hiddify_deeplink": _build_hiddify_deeplink(_build_subscription_url(request, user)), "days_left": days_left, "end_date_str": end_date.strftime("%d.%m.%Y") if end_date else "Нет данных", "formatted_traffic": format_bytes(traffic_bytes), "traffic_percent": min(100, round((traffic_bytes / 1099511627776) * 100, 1)), "os_name": user.preferred_os})
+    sub_url = _build_subscription_url(request, user)
+    return templates.TemplateResponse(request=request, name="cabinet.html", context={"request": request, "user": user, "sub_url": sub_url, "hiddify_deeplink": _build_hiddify_deeplink(sub_url), "days_left": days_left, "end_date_str": end_date.strftime("%d.%m.%Y") if end_date else "Нет данных", "formatted_traffic": format_bytes(traffic_bytes), "traffic_percent": min(100, round((traffic_bytes / 1099511627776) * 100, 1)), "os_name": user.preferred_os})
 
 # --- ИСПРАВЛЕННЫЕ ГЕНЕРАТОРЫ XRAY ---
 def verify_sync_token(request: Request):

@@ -40,11 +40,19 @@ class YooKassaService:
             return False
         return hmac.compare_digest(token.strip(), expected)
 
+    def _is_valid_exact_auth(self, authorization_header: str | None) -> bool:
+        expected = settings.YOOKASSA_WEBHOOK_AUTH
+        if not expected or not authorization_header:
+            return False
+        return hmac.compare_digest(authorization_header.strip(), expected.strip())
+
     def is_valid_webhook_auth(
         self,
         authorization_header: str | None,
         webhook_secret_header: str | None,
     ) -> bool:
+        if self._is_valid_exact_auth(authorization_header):
+            return True
         if self._is_valid_basic_auth(authorization_header):
             return True
         return self._is_valid_webhook_secret(webhook_secret_header)

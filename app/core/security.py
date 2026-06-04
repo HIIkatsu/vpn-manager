@@ -82,6 +82,20 @@ class WebhookReplayGuard:
             return False
 
 
+def ensure_redis_available() -> None:
+    if Redis is None:
+        raise RuntimeError("redis package is required when REDIS_URL is configured")
+    if not settings.REDIS_URL:
+        raise RuntimeError("REDIS_URL is required in production")
+    client = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    try:
+        client.ping()
+    except RedisError as exc:
+        raise RuntimeError("Redis is not reachable") from exc
+    finally:
+        client.close()
+
+
 class DistributedLock:
     def __init__(self) -> None:
         self._lock = Lock()
@@ -106,14 +120,34 @@ class DistributedLock:
             return True
 
 
-def sign_subscription_token(user_uuid: str, expires_at: int, secret: str) -> str:
+def subscription_signing_secret() -> str:
+    return settings.SUBSCRIPTION_SIGNING_SECRET or settings.SECRET_PREFIX
+
+
+def sign_subscription_token(user_uuid: str, expires_at: int, secret: str | None = None) -> str:
     payload = f"{user_uuid}:{expires_at}"
-    return hmac.new(secret.encode(), payload.encode(), sha256).hexdigest()
+    signing_secret = secret or subscription_signing_secret()
+    return hmac.new(signing_secret.encode(), payload.encode(), sha256).hexdigest()
 
 
-def verify_subscription_token(user_uuid: str, expires_at: int, signature: str, secret: str) -> bool:
+def verify_subscription_token(user_uuid: str, expires_at: int, signature: str, secret: str | None = None) -> bool:
+    if expires_at < int(time.time()):
+        return False
     expected = sign_subscription_token(user_uuid, expires_at, secret)
     return hmac.compare_digest(expected, signature)
+
+
+def split_csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def client_ip_from_request(request) -> str:
+    trusted_proxies = split_csv(settings.TRUSTED_PROXY_IPS)
+    peer_ip = request.client.host if request.client else ""
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for and peer_ip and ip_in_allowlist(peer_ip, trusted_proxies):
+        return forwarded_for.split(",", 1)[0].strip()
+    return peer_ip
 
 
 def ip_in_allowlist(ip: str, cidrs: list[str]) -> bool:

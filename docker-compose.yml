@@ -1,12 +1,21 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
   api:
     build: .
     restart: always
     env_file:
       - .env
     command: uvicorn main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - redis
 
   bot:
     build: .
@@ -16,6 +25,7 @@ services:
     command: python -m app.runtime.bot_entrypoint
     depends_on:
       - api
+      - redis
 
   worker:
     build: .
@@ -25,3 +35,7 @@ services:
     command: python -m app.runtime.worker_entrypoint
     depends_on:
       - api
+      - redis
+
+volumes:
+  redis_data:

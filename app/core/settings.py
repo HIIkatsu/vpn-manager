@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,7 +25,18 @@ class Settings(BaseSettings):
     YOOKASSA_WEBHOOK_IP_ALLOWLIST: str = ""
     TRUSTED_PROXY_IPS: str = ""
 
+    ANYPAY_PROJECT_ID: str | None = None
+    ANYPAY_SECRET_KEY: str | None = None
+    CRYPTOBOT_TOKEN: str | None = None
+    PAYMENT_RETURN_URL: str = "https://t.me/ankovpn_bot"
+    SUPPORT_URL: str = "https://t.me/ankovpn_support_bot"
+
+    SUBSCRIPTION_SIGNING_SECRET: str | None = None
+    SUBSCRIPTION_TOKEN_TTL_SECONDS: int = 30 * 24 * 60 * 60
+    LEGACY_SUBSCRIPTION_URLS_ENABLED: bool = False
     SUBSCRIPTION_RATE_LIMIT_PER_MINUTE: int = 5
+    PAYMENT_STATUS_RATE_LIMIT_PER_MINUTE: int = 10
+    WEBHOOK_RATE_LIMIT_PER_MINUTE: int = 60
     YOOKASSA_RATE_LIMIT_PER_MINUTE: int = 30
     REDIS_URL: str | None = None
     WEBHOOK_REPLAY_TTL_SECONDS: int = 3600
@@ -61,6 +73,27 @@ class Settings(BaseSettings):
     VLESS_FINGERPRINT: str
     ADMIN_USERNAME: str
     ADMIN_PASSWORD: str
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.SUBSCRIPTION_TOKEN_TTL_SECONDS <= 0:
+            raise ValueError("SUBSCRIPTION_TOKEN_TTL_SECONDS must be positive")
+        if self.DEBUG:
+            return self
+
+        missing: list[str] = []
+        if not self.REDIS_URL:
+            missing.append("REDIS_URL")
+        if not (self.YOOKASSA_WEBHOOK_AUTH or self.YOOKASSA_WEBHOOK_SECRET):
+            missing.append("YOOKASSA_WEBHOOK_AUTH or YOOKASSA_WEBHOOK_SECRET")
+        for field in ("ANYPAY_PROJECT_ID", "ANYPAY_SECRET_KEY", "CRYPTOBOT_TOKEN"):
+            if not getattr(self, field):
+                missing.append(field)
+        if not (self.SUBSCRIPTION_SIGNING_SECRET or self.SECRET_PREFIX):
+            missing.append("SUBSCRIPTION_SIGNING_SECRET or SECRET_PREFIX")
+        if missing:
+            raise ValueError("Missing production security settings: " + ", ".join(missing))
+        return self
 
 
 @lru_cache
