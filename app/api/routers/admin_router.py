@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 from html import escape
 from uuid import uuid4
@@ -13,6 +14,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from app.api.dependencies.common import get_read_session, get_write_session, get_current_admin
 from app.api.utils.subscription import format_bytes
+from app.core.security import sign_subscription_token
 from app.core.settings import settings
 from app.db.models import PendingAction, User
 from app.db.models.promocode import Promocode
@@ -68,6 +70,12 @@ async def admin_dashboard(
         if u.sub_end_date:
             delta = u.sub_end_date - now
             days_left = max(0, delta.days + (1 if delta.seconds > 0 else 0))
+        subscription_expires_at = int(time.time()) + settings.SUBSCRIPTION_TOKEN_TTL_SECONDS
+        subscription_signature = sign_subscription_token(str(u.vless_uuid), subscription_expires_at)
+        subscription_url = (
+            f"https://{settings.WEBHOOK_URL_DOMAIN}/webhook/sub/{u.vless_uuid}"
+            f"?exp={subscription_expires_at}&sig={subscription_signature}"
+        )
         users_data.append(
             {
                 "id": u.id,
@@ -75,6 +83,7 @@ async def admin_dashboard(
                 "username": u.username,
                 "vless_uuid": u.vless_uuid,
                 "masked_uuid": f"{str(u.vless_uuid)[:8]}************{str(u.vless_uuid)[-4:]}",
+                "subscription_url": subscription_url,
                 "is_active": is_currently_active,
                 "sub_end_date_obj": u.sub_end_date,
                 "sub_end_date": u.sub_end_date.strftime("%d.%m.%Y %H:%M") if u.sub_end_date else "Безлимит",

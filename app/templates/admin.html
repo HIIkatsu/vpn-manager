@@ -10,8 +10,7 @@
         function copyUUID(val) {
             navigator.clipboard.writeText(val).then(() => alert('UUID скопирован!'));
         }
-        function copySubLink(uuid) {
-            const link = 'https://' + window.location.hostname + '/webhook/sub/' + uuid;
+        function copySubLink(link) {
             navigator.clipboard.writeText(link).then(() => alert('Ссылка на подписку скопирована!'));
         }
     </script>
@@ -177,7 +176,7 @@
                                 <div class="text-slate-400 text-xs font-mono bg-slate-900 px-2 py-1 rounded inline-flex items-center gap-2 cursor-pointer hover:text-blue-400 transition" onclick="copyUUID('{{ u.vless_uuid }}')" title="Копировать UUID">
                                     {{ u.vless_uuid[:8] }}...{{ u.vless_uuid[-4:] }} <i class="fa-regular fa-copy"></i>
                                 </div>
-                                <div class="text-slate-400 text-xs font-mono bg-slate-900 px-2 py-1 rounded inline-flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition" onclick="copySubLink('{{ u.vless_uuid }}')" title="Скопировать ссылку на подписку">
+                                <div class="text-slate-400 text-xs font-mono bg-slate-900 px-2 py-1 rounded inline-flex items-center gap-2 cursor-pointer hover:text-emerald-400 transition" onclick="copySubLink('{{ u.subscription_url }}')" title="Скопировать ссылку на подписку">
                                     <i class="fa-solid fa-link"></i> Скопировать подписку
                                 </div>
                             </div>

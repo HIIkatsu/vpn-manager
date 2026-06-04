@@ -1,9 +1,11 @@
 import logging
+import time
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from app.bot.keyboards.main import main_keyboard, main_inline_keyboard
+from app.core.security import sign_subscription_token
 from app.core.settings import settings
 from app.services.user_service import UserService
 from app.services.traffic_stats_service import TrafficStatsService
@@ -56,7 +58,9 @@ def get_profile_data(user, webhook_domain: str, used_bytes: int = 0):
     
     inline_buttons = []
     os_name = getattr(user, "preferred_os", "android")
-    sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}?os={os_name}"
+    expires_at = int(time.time()) + settings.SUBSCRIPTION_TOKEN_TTL_SECONDS
+    signature = sign_subscription_token(str(user.vless_uuid), expires_at)
+    sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}?os={os_name}&exp={expires_at}&sig={signature}"
     cabinet_url = f"https://{webhook_domain}/cabinet/{user.vless_uuid}?os={os_name}"
     
     if user.is_active:
