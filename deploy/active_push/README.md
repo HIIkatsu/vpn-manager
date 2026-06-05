@@ -52,10 +52,15 @@ pip install -r requirements.txt
 ```env
 SYNC_NODES_TOKEN=<тот же секрет, что на мастере>
 XRAY_CONFIG_PATH=/usr/local/etc/xray/config.json
-# Обычно пусто: receiver сам найдёт dokodemo-door API inbound в config.json.
+# Обычно пусто: receiver сам найдёт локальный Xray API inbound в config.json.
 XRAY_GRPC_TARGET=
 XRAY_REQUEST_TIMEOUT_SECONDS=5
 XRAY_REQUEST_RETRIES=2
+# auto: сначала gRPC AlterInbound, при сбое — безопасная правка config.json + systemctl reload xray.
+# grpc: только gRPC. config: только правка config.json + reload.
+XRAY_MUTATION_MODE=auto
+XRAY_BINARY=/usr/local/bin/xray
+XRAY_RELOAD_COMMAND=systemctl reload xray
 SYNC_MAX_SKEW_SECONDS=300
 LOG_LEVEL=INFO
 ```
@@ -92,6 +97,36 @@ sudo nginx -t
 sudo systemctl reload nginx
 curl -fsS https://<node-domain>/health
 ```
+
+
+## Важный фикс Xray API inbound
+
+Если `xray api ... --server=127.0.0.1:10085` сразу падает с `failed to dial` / `tcp handshaker shutdown`, сначала проверьте сам API inbound. В актуальной документации Xray для API используется `protocol: "tunnel"` и `settings.rewriteAddress`, а не старый `dokodemo-door` + `settings.address`:
+
+```json
+{
+  "api": {
+    "tag": "api",
+    "services": ["HandlerService", "StatsService"]
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "port": 10085,
+      "protocol": "tunnel",
+      "settings": { "rewriteAddress": "127.0.0.1" },
+      "tag": "api"
+    }
+  ],
+  "routing": {
+    "rules": [
+      { "type": "field", "inboundTag": ["api"], "outboundTag": "api" }
+    ]
+  }
+}
+```
+
+После правки выполните `xray run -test -config /usr/local/etc/xray/config.json` и `systemctl reload xray`. Если gRPC API всё равно нестабилен, оставьте `XRAY_MUTATION_MODE=auto` или выставьте `XRAY_MUTATION_MODE=config`: receiver будет атомарно обновлять `settings.clients` во всех VLESS inbound, валидировать временный конфиг через `xray run -test`, заменять файл и выполнять `systemctl reload xray` без принудительного `restart`. Для этого процессу receiver нужны права на запись `XRAY_CONFIG_PATH` и запуск reload-команды; unit из этого репозитория запускает receiver от `root`, а сам HTTP-сервис слушает только `127.0.0.1` и требует HMAC-подписанный запрос. Если не хотите root-процесс, выдайте узкий sudo/ACL только на этот файл и `systemctl reload xray`, а в unit верните менее привилегированного пользователя.
 
 ## Проверка доставки
 

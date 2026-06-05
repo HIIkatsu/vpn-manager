@@ -5,8 +5,12 @@ import hmac
 import json
 import logging
 import os
+import shlex
+import subprocess
+import tempfile
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import UUID
 
 import grpc
@@ -26,6 +30,13 @@ SYNC_NODES_TOKEN = os.getenv("SYNC_NODES_TOKEN", "")
 SYNC_MAX_SKEW_SECONDS = int(os.getenv("SYNC_MAX_SKEW_SECONDS", "300"))
 XRAY_REQUEST_TIMEOUT_SECONDS = float(os.getenv("XRAY_REQUEST_TIMEOUT_SECONDS", "5"))
 XRAY_REQUEST_RETRIES = int(os.getenv("XRAY_REQUEST_RETRIES", "2"))
+XRAY_MUTATION_MODE = os.getenv("XRAY_MUTATION_MODE", "auto").lower()
+XRAY_BINARY = os.getenv("XRAY_BINARY", "/usr/local/bin/xray")
+XRAY_RELOAD_COMMAND = os.getenv("XRAY_RELOAD_COMMAND", "systemctl reload xray")
+
+
+class MutationError(RuntimeError):
+    pass
 
 
 def _build_vless_account_message(uuid: str, flow: str = "xtls-rprx-vision", encryption: str = "none") -> bytes:
@@ -41,13 +52,24 @@ def _build_vless_account_message(uuid: str, flow: str = "xtls-rprx-vision", encr
     return payload
 
 
+def _client_payload(email: str, uuid: str, tag: str) -> dict[str, str]:
+    client = {"id": str(UUID(uuid)) if len(uuid) == 32 else uuid, "email": email}
+    if "ws" not in tag.lower():
+        client["flow"] = "xtls-rprx-vision"
+    return client
+
+
+def _load_xray_config() -> dict:
+    with open(XRAY_CONFIG_PATH, "r", encoding="utf-8") as config_file:
+        return json.load(config_file)
+
+
 def _load_xray_targets() -> tuple[str, list[str]]:
     target = XRAY_GRPC_TARGET or "127.0.0.1:10085"
     inbound_tags: list[str] = []
-    with open(XRAY_CONFIG_PATH, "r", encoding="utf-8") as config_file:
-        config = json.load(config_file)
+    config = _load_xray_config()
     for inbound in config.get("inbounds", []):
-        if inbound.get("protocol") == "dokodemo-door" and not XRAY_GRPC_TARGET:
+        if inbound.get("protocol") in {"dokodemo-door", "tunnel"} and inbound.get("tag") == config.get("api", {}).get("tag") and not XRAY_GRPC_TARGET:
             target = f"127.0.0.1:{inbound.get('port')}"
         if inbound.get("protocol") == "vless" and inbound.get("tag"):
             inbound_tags.append(str(inbound["tag"]))
@@ -67,7 +89,90 @@ class ClientUpdate(BaseModel):
     event_id: str | None = None
 
 
-class XrayClientMutator:
+class XrayConfigMutator:
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+
+    async def add_client(self, email: str, uuid: str) -> bool:
+        return await self._mutate("add", email=email, uuid=uuid)
+
+    async def remove_client(self, email: str) -> bool:
+        return await self._mutate("remove", email=email, uuid=None)
+
+    async def _mutate(self, action: str, *, email: str, uuid: str | None) -> bool:
+        async with self.lock:
+            config = _load_xray_config()
+            changed = False
+            for inbound in config.get("inbounds", []):
+                if inbound.get("protocol") != "vless":
+                    continue
+                tag = str(inbound.get("tag") or "")
+                settings = inbound.setdefault("settings", {})
+                clients = settings.setdefault("clients", [])
+                existing_idx = next((idx for idx, client in enumerate(clients) if str(client.get("email")) == email), None)
+                if action == "add":
+                    if uuid is None:
+                        raise MutationError("uuid is required for add")
+                    new_client = _client_payload(email, uuid, tag)
+                    if existing_idx is None:
+                        clients.append(new_client)
+                        changed = True
+                    elif clients[existing_idx].get("id") != new_client["id"]:
+                        clients[existing_idx].update(new_client)
+                        changed = True
+                elif existing_idx is not None:
+                    clients.pop(existing_idx)
+                    changed = True
+            if not changed:
+                return True
+            await self._validate_and_install(config)
+            return True
+
+    async def _validate_and_install(self, config: dict) -> None:
+        config_path = Path(XRAY_CONFIG_PATH)
+        config_dir = config_path.parent
+        backup_path = config_path.with_suffix(config_path.suffix + f".bak.{int(time.time())}")
+        fd, temp_name = tempfile.mkstemp(prefix=f".{config_path.name}.", suffix=".tmp", dir=config_dir)
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as temp_file:
+                json.dump(config, temp_file, ensure_ascii=False, indent=2)
+                temp_file.write("\n")
+            await self._run_command([XRAY_BINARY, "run", "-test", "-config", str(temp_path)], "xray config validation")
+            config_path.replace(backup_path)
+            temp_path.replace(config_path)
+            try:
+                await self._reload_xray()
+            except Exception:
+                config_path.replace(temp_path)
+                backup_path.replace(config_path)
+                await self._reload_xray()
+                raise
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
+
+    async def _reload_xray(self) -> None:
+        if not XRAY_RELOAD_COMMAND.strip():
+            return
+        await self._run_command(shlex.split(XRAY_RELOAD_COMMAND), "xray reload")
+
+    async def _run_command(self, command: list[str], description: str) -> None:
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except OSError as exc:
+            raise MutationError(f"{description} failed to start: {exc}") from exc
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            output = (stderr or stdout).decode("utf-8", errors="replace").strip()
+            raise MutationError(f"{description} failed with code {process.returncode}: {output}")
+
+
+class XrayGrpcMutator:
     def __init__(self) -> None:
         self.target = ""
         self.inbound_tags: list[str] = []
@@ -123,14 +228,56 @@ class XrayClientMutator:
                 return True
             except grpc.RpcError as exc:
                 details = str(exc.details()).lower()
+                logger.warning("Xray gRPC AlterInbound failed on attempt %s/%s: %s", attempt + 1, XRAY_REQUEST_RETRIES + 1, exc.details())
                 if idempotent_error in details:
                     return True
                 if attempt < XRAY_REQUEST_RETRIES:
                     await asyncio.sleep(0.2 * (2**attempt))
             except asyncio.TimeoutError:
+                logger.warning("Xray gRPC AlterInbound timed out on attempt %s/%s", attempt + 1, XRAY_REQUEST_RETRIES + 1)
                 if attempt < XRAY_REQUEST_RETRIES:
                     await asyncio.sleep(0.2 * (2**attempt))
         return False
+
+
+class XrayClientMutator:
+    def __init__(self) -> None:
+        self.grpc = XrayGrpcMutator()
+        self.config = XrayConfigMutator()
+        if XRAY_MUTATION_MODE not in {"auto", "grpc", "config"}:
+            raise RuntimeError("XRAY_MUTATION_MODE must be one of: auto, grpc, config")
+
+    async def start(self) -> None:
+        if XRAY_MUTATION_MODE in {"auto", "grpc"}:
+            await self.grpc.start()
+        else:
+            _load_xray_targets()
+            logger.info("Receiver will mutate %s directly and run reload command: %s", XRAY_CONFIG_PATH, XRAY_RELOAD_COMMAND)
+
+    async def stop(self) -> None:
+        await self.grpc.stop()
+
+    async def add_client(self, email: str, uuid: str) -> bool:
+        return await self._mutate("add", email=email, uuid=uuid)
+
+    async def remove_client(self, email: str) -> bool:
+        return await self._mutate("remove", email=email, uuid=None)
+
+    async def _mutate(self, action: str, *, email: str, uuid: str | None) -> bool:
+        if XRAY_MUTATION_MODE in {"auto", "grpc"}:
+            try:
+                ok = await (self.grpc.add_client(email, str(uuid)) if action == "add" else self.grpc.remove_client(email))
+            except Exception as exc:
+                logger.warning("Xray gRPC mutation raised an exception: %s", exc)
+                ok = False
+            if ok or XRAY_MUTATION_MODE == "grpc":
+                return ok
+            logger.warning("Falling back to config-file mutation after Xray gRPC failure")
+        try:
+            return await (self.config.add_client(email, str(uuid)) if action == "add" else self.config.remove_client(email))
+        except Exception as exc:
+            logger.error("Xray config-file mutation failed: %s", exc)
+            return False
 
 
 mutator = XrayClientMutator()

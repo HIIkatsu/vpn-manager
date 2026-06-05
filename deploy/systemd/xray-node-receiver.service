@@ -5,8 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=www-data
-Group=www-data
+# Runs as root so XRAY_MUTATION_MODE=config/auto can atomically update
+# /usr/local/etc/xray/config.json and call `systemctl reload xray`.
+User=root
+Group=root
 WorkingDirectory=/opt/vpn-manager
 EnvironmentFile=/opt/vpn-manager/.env.node
 ExecStart=/opt/vpn-manager/.venv/bin/uvicorn deploy.active_push.xray_node_receiver:app --host 127.0.0.1 --port 8090
