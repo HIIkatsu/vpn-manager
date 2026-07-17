@@ -3,26 +3,45 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_, select, update
 
 from app.db.models.outbox_event import OutboxEvent
+import json
+from app.services.node_sync import _configured_nodes
 from app.db.repositories.base import BaseRepository
 
 
 class OutboxRepository(BaseRepository[OutboxEvent]):
     model = OutboxEvent
-    max_attempts = 5
+    max_attempts = 100
 
     async def enqueue(self, *, event_type: str, aggregate_type: str, aggregate_id: str, dedup_key: str, payload_json: str) -> OutboxEvent:
-        existing = await self.session.scalar(select(OutboxEvent).where(OutboxEvent.dedup_key == dedup_key))
+        # Check if ANY event with this dedup_key prefix exists
+        existing = await self.session.scalar(select(OutboxEvent).where(OutboxEvent.dedup_key.like(f"{dedup_key}%")))
         if existing:
             return existing
-        event = OutboxEvent(
-            event_type=event_type,
-            aggregate_type=aggregate_type,
-            aggregate_id=aggregate_id,
-            dedup_key=dedup_key,
-            payload_json=payload_json,
-            status="pending",
-        )
-        return await self.add(event)
+            
+        nodes = [n.name for n in _configured_nodes()] + ["local"]
+        try:
+            payload = json.loads(payload_json)
+        except Exception:
+            payload = {}
+            
+        # Create one event PER target node! This guarantees fully isolated queues.
+        first_event = None
+        for node in nodes:
+            node_payload = dict(payload)
+            node_payload["target_node"] = node
+            event = OutboxEvent(
+                event_type=event_type,
+                aggregate_type=aggregate_type,
+                aggregate_id=aggregate_id,
+                dedup_key=f"{dedup_key}:{node}",
+                payload_json=json.dumps(node_payload),
+                status="pending",
+            )
+            self.session.add(event)
+            if first_event is None:
+                first_event = event
+                
+        return first_event
 
     async def claim_pending_batch(self, limit: int) -> list[OutboxEvent]:
         now = datetime.now(timezone.utc)

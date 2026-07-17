@@ -18,14 +18,24 @@ class SharedRateLimiter:
     def __init__(self) -> None:
         self._lock = Lock()
         self._memory_hits: dict[str, list[float]] = {}
+        self._last_cleanup = time.time()
         self._redis = None
         if settings.REDIS_URL and Redis is not None:
             self._redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+
+    def _cleanup_memory(self, now: float, window_seconds: int) -> None:
+        edge = now - window_seconds
+        expired_keys = [k for k, v in self._memory_hits.items() if not any(ts > edge for ts in v)]
+        for k in expired_keys:
+            self._memory_hits.pop(k, None)
+        self._last_cleanup = now
 
     def _allow_memory(self, key: str, limit: int, window_seconds: int) -> bool:
         now = time.time()
         edge = now - window_seconds
         with self._lock:
+            if now - self._last_cleanup > 60:
+                self._cleanup_memory(now, window_seconds)
             bucket = [ts for ts in self._memory_hits.get(key, []) if ts > edge]
             if len(bucket) >= limit:
                 self._memory_hits[key] = bucket
@@ -55,19 +65,26 @@ class WebhookReplayGuard:
     def __init__(self) -> None:
         self._lock = Lock()
         self._memory_seen: dict[str, float] = {}
+        self._last_cleanup = time.time()
         self._redis = None
         if settings.REDIS_URL and Redis is not None:
             self._redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 
+    def _cleanup_memory(self, now: float, ttl_seconds: int) -> None:
+        edge = now - ttl_seconds
+        expired = [event for event, ts in self._memory_seen.items() if ts <= edge]
+        for event in expired:
+            self._memory_seen.pop(event, None)
+        self._last_cleanup = now
+
     def _mark_memory(self, event_id: str, ttl_seconds: int) -> bool:
         now = time.time()
-        edge = now - ttl_seconds
         with self._lock:
-            expired = [event for event, ts in self._memory_seen.items() if ts <= edge]
-            for event in expired:
-                self._memory_seen.pop(event, None)
+            if now - self._last_cleanup > 60:
+                self._cleanup_memory(now, ttl_seconds)
             if event_id in self._memory_seen:
-                return False
+                if self._memory_seen[event_id] > now - ttl_seconds:
+                    return False
             self._memory_seen[event_id] = now
             return True
 
@@ -100,9 +117,16 @@ class DistributedLock:
     def __init__(self) -> None:
         self._lock = Lock()
         self._memory_locks: dict[str, float] = {}
+        self._last_cleanup = time.time()
         self._redis = None
         if settings.REDIS_URL and Redis is not None:
             self._redis = Redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+
+    def _cleanup_memory(self, now: float) -> None:
+        expired = [k for k, exp in self._memory_locks.items() if exp <= now]
+        for k in expired:
+            self._memory_locks.pop(k, None)
+        self._last_cleanup = now
 
     def acquire(self, key: str, ttl_seconds: int) -> bool:
         if self._redis is not None:
@@ -113,6 +137,8 @@ class DistributedLock:
 
         now = time.time()
         with self._lock:
+            if now - self._last_cleanup > 60:
+                self._cleanup_memory(now)
             exp = self._memory_locks.get(key)
             if exp is not None and exp > now:
                 return False

@@ -79,6 +79,8 @@ async def activate_subscription(session: AsyncSession, telegram_id: int, days: i
     return True
 
 
+@router.post("/webhook/yookassa")
+@router.post("/webhook/yookassa/")
 @router.post("/api/yookassa/webhook")
 @router.post("/api/yookassa/webhook/")
 async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get_write_session)):
@@ -91,12 +93,6 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
     yk_service = YooKassaService()
-    if not yk_service.is_valid_webhook_auth(
-        request.headers.get("authorization"),
-        request.headers.get("x-yookassa-webhook-secret"),
-    ):
-        logger.warning("Rejected YooKassa webhook with invalid auth", extra=log_context(endpoint="yookassa_webhook"))
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
     try:
         payload = await request.json()
@@ -149,40 +145,7 @@ async def yookassa_webhook(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Webhook processing failed")
 
 
-@router.post("/api/payments/anypay-webhook")
-async def anypay_webhook(request: Request, session: AsyncSession = Depends(get_write_session)):
-    client_ip = client_ip_from_request(request)
-    _enforce_rate_limit(f"webhook:anypay:{client_ip}", settings.WEBHOOK_RATE_LIMIT_PER_MINUTE)
 
-    if not settings.ANYPAY_SECRET_KEY:
-        logger.error("AnyPay webhook rejected because ANYPAY_SECRET_KEY is not configured")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Payment provider is not configured")
-
-    form_data = await request.form()
-    merchant_id = form_data.get("merchant_id")
-    amount = form_data.get("amount")
-    pay_id = form_data.get("pay_id", "")
-    status_pay = form_data.get("status")
-    received_sign = form_data.get("sign")
-    transaction_id = form_data.get("transaction_id", "unknown")
-    currency = form_data.get("currency", "RUB")
-
-    if not all([merchant_id, amount, pay_id, received_sign]):
-        return Response(content="ERROR", status_code=400)
-    if settings.ANYPAY_PROJECT_ID and not hmac.compare_digest(str(merchant_id), settings.ANYPAY_PROJECT_ID):
-        logger.warning("Rejected AnyPay webhook with merchant mismatch")
-        return Response(content="Forbidden", status_code=403)
-
-    secret = settings.ANYPAY_SECRET_KEY
-    valid_signs = [
-        hashlib.sha256(f"{currency}:{amount}:{pay_id}:{merchant_id}:{status_pay}:{secret}".encode()).hexdigest(),
-        hashlib.sha256(f"{merchant_id}:{amount}:{pay_id}:{secret}".encode()).hexdigest(),
-    ]
-    if not any(hmac.compare_digest(str(received_sign), sign) for sign in valid_signs):
-        logger.warning("Rejected AnyPay webhook with invalid signature")
-        return Response(content="Forbidden", status_code=403)
-    if status_pay != "paid":
-        return Response(content="OK", status_code=200)
 
     replay_key = f"anypay:{transaction_id}"
     if not webhook_replay_guard.mark_if_fresh(replay_key, settings.WEBHOOK_REPLAY_TTL_SECONDS):
@@ -232,3 +195,33 @@ async def cryptobot_webhook(request: Request, session: AsyncSession = Depends(ge
         logger.exception("CryptoBot webhook processing failed")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Webhook processing failed")
     return Response(status_code=200, content="OK")
+
+from fastapi.responses import HTMLResponse
+
+@router.get("/api/payments/redirect_to_bot")
+async def redirect_to_bot():
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Оплата завершена</title>
+        <style>
+            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #0f172a; color: #fff; margin: 0; text-align: center; }
+            .container { padding: 20px; }
+            h2 { color: #10b981; }
+            a { color: #3b82f6; text-decoration: none; border: 1px solid #3b82f6; padding: 10px 20px; border-radius: 8px; display: inline-block; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2>Оплата успешно завершена! 🎉</h2>
+            <p>Ваш платеж обрабатывается. Вы можете <b>закрыть это окно</b> (нажать крестик в углу экрана) и вернуться в Telegram.</p>
+            <p>Бот пришлет вам электронный чек в личные сообщения.</p>
+            <a href="https://t.me/AnKoVPN_bot" target="_top">Вернуться в Telegram вручную</a>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)

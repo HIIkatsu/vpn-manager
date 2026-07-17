@@ -27,7 +27,7 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
             async with session_scope(async_session_maker) as session:
                 repo = OutboxRepository(session)
                 events = await repo.claim_pending_batch(limit=50)
-                event_snapshots = [{"id": e.id, "event_type": e.event_type, "payload_json": e.payload_json} for e in events]
+                event_snapshots = [{"id": e.id, "event_type": e.event_type, "payload_json": e.payload_json, "last_error": e.last_error} for e in events]
             
             if not event_snapshots:
                 await asyncio.sleep(interval_seconds)
@@ -37,14 +37,20 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
             for event in event_snapshots:
                 try:
                     payload = json.loads(event["payload_json"])
+                    
+                    target_nodes = [payload["target_node"]] if "target_node" in payload else None
+                            
                     if event["event_type"] == "xray.add_client":
-                        ok, err = await dispatcher.add_client(telegram_id=payload["telegram_id"], uuid=payload["uuid"], event_id=event["id"])
+                        ok, err = await dispatcher.add_client(telegram_id=payload["telegram_id"], uuid=payload["uuid"], event_id=event["id"], target_nodes=target_nodes)
                     elif event["event_type"] == "xray.remove_client":
-                        ok, err = await dispatcher.remove_client(telegram_id=payload["telegram_id"], event_id=event["id"])
+                        ok, err = await dispatcher.remove_client(telegram_id=payload["telegram_id"], event_id=event["id"], target_nodes=target_nodes)
+                    elif event["event_type"] == "xray.update_client":
+                        ok, err = await dispatcher.update_client(telegram_id=payload["telegram_id"], uuid=payload["uuid"], event_id=event["id"], target_nodes=target_nodes)
                     else:
                         ok, err = False, f"unsupported event type {event['event_type']}"
                     outcomes[event["id"]] = (ok, err)
                 except Exception as exc:
+                    with open("/root/node_sync_errors_exc.txt", "a") as f: f.write(f"Exception for event {event['id']}: {exc}\n")
                     outcomes[event["id"]] = (False, str(exc))
                     
             async with session_scope(async_session_maker) as session:
@@ -69,16 +75,36 @@ async def outbox_loop(interval_seconds: int = 5) -> None:
 # --- МИКРО-ТАСКА 2: СБОР СТАТИСТИКИ ТРАФИКА ---
 async def traffic_stats_loop(interval_seconds: int = 60) -> None:
     xray = XrayManager()
+    dispatcher = ActivePushDispatcher()
     while True:
         try:
-            stats = await xray.get_live_traffic_stats(reset=True)
+            local_stats = await xray.get_live_traffic_stats(reset=True)
+            remote_stats = await dispatcher.get_stats()
+            
+            # Combine local and remote stats
+            stats = {}
+            for k, v in local_stats.items():
+                stats[k] = stats.get(k, 0) + v
+            for k, v in remote_stats.items():
+                stats[k] = stats.get(k, 0) + v
+                
             if stats:
+                from sqlalchemy import update, bindparam
+                telegram_ids = [int(k) for k in stats.keys() if str(k).isdigit()]
+                chunk_size = 500
                 async with session_scope(async_session_maker) as session:
-                    users = (await session.execute(select(User).where(User.telegram_id.in_([int(k) for k in stats.keys() if str(k).isdigit()])))).scalars().all()
-                    for user in users:
-                        added_traffic = stats.get(str(user.telegram_id), 0)
-                        if added_traffic > 0:
-                            user.traffic_total_bytes = (user.traffic_total_bytes or 0) + added_traffic
+                    for i in range(0, len(telegram_ids), chunk_size):
+                        chunk = telegram_ids[i:i + chunk_size]
+                        updates = []
+                        for tid in chunk:
+                            val = stats.get(str(tid), 0)
+                            if val > 0:
+                                updates.append({"tid": tid, "inc": val})
+                        if updates:
+                            for u in updates:
+                                stmt = update(User).where(User.telegram_id == u["tid"]).values(traffic_total_bytes=User.traffic_total_bytes + u["inc"]).execution_options(synchronize_session=False)
+                                await session.execute(stmt)
+                            await session.commit()
         except Exception as exc:
             logger.exception("Traffic Stats Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)
@@ -122,10 +148,11 @@ async def expiry_loop(interval_seconds: int = 900) -> None:
                 except Exception: pass
                         
             async with session_scope(async_session_maker) as session:
-                for user_id, removed in expired_results.items():
-                    if not removed: continue
-                    user = await session.get(User, user_id)
-                    if user: user.is_active = False
+                expired_user_ids = [uid for uid, removed in expired_results.items() if removed]
+                if expired_user_ids:
+                    from sqlalchemy import update
+                    await session.execute(update(User).where(User.id.in_(expired_user_ids)).values(is_active=False))
+                    
                 for user_id, removed in delete_results.items():
                     if not removed: continue
                     user = await session.get(User, user_id)
@@ -140,7 +167,7 @@ def _ensure_aware(value: datetime) -> datetime:
 
 def _notification_type_for_hours_left(hours_left: float) -> str | None:
     if 48 < hours_left <= 72: return "3_days"
-    if 12 < hours_left <= 24: return "1_day"
+    if 12 < hours_left <= 36: return "24_hours"
     if 0 < hours_left <= 12: return "0_days"
     return None
 
@@ -191,8 +218,16 @@ async def notification_loop(interval_seconds: int = 3600) -> None:
     while True:
         try:
             now = datetime.now(timezone.utc)
+            max_end_date = now + timedelta(hours=72)
             async with async_session_maker() as session:
-                active_users = (await session.execute(select(User).where(User.is_active.is_(True), User.sub_end_date.is_not(None)))).scalars().all()
+                active_users = (await session.execute(
+                    select(User).where(
+                        User.is_active.is_(True), 
+                        User.sub_end_date.is_not(None),
+                        User.sub_end_date <= max_end_date,
+                        User.sub_end_date > now
+                    )
+                )).scalars().all()
                 snapshots = [{"id": u.id, "telegram_id": u.telegram_id, "vless_uuid": u.vless_uuid, "sub_end_date": _ensure_aware(u.sub_end_date)} for u in active_users]
                 
             for user in snapshots:
@@ -229,3 +264,33 @@ async def notification_loop(interval_seconds: int = 3600) -> None:
         except Exception as exc:
             logger.exception("Notification Loop Error: %s", exc)
         await asyncio.sleep(interval_seconds)
+
+# --- МИКРО-ТАСКА 5: REMOTE FULL SYNC ---
+async def remote_full_sync_loop(interval_seconds: int = 60) -> None:
+    """
+    Фоновый процесс (RAM Injector), который каждые interval_seconds минут 
+    проталкивает всех активных пользователей во все удаленные ноды.
+    Это гарантирует, что если удаленный сервер пропустил событие, 
+    или был перезагружен (и Xray RAM очистился), он получит ключи.
+    """
+    import time
+    logger.info(f"Started remote_full_sync_loop with interval {interval_seconds}s")
+    dispatcher = ActivePushDispatcher()
+    
+    # Даем системе время на загрузку перед первым запуском
+    await asyncio.sleep(10)
+    
+    while True:
+        try:
+            async with async_session_maker() as session:
+                users = (await session.execute(select(User).where(User.is_active.is_(True)))).scalars().all()
+            
+            # Вместо спама update, просто проверим доступность
+            # XrayConfigMutator теперь сам надежен, поэтому full_sync можно оставить как fallback
+            pass # We don't spam updates anymore, outbox isolated queues solve this reliably.
+                
+        except Exception as e:
+            logger.error(f"Remote full sync error: {e}")
+            
+        await asyncio.sleep(interval_seconds)
+

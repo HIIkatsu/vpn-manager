@@ -33,27 +33,65 @@ def format_bytes(size_bytes: int) -> str:
 
 def _build_subscription_url(request: Request, user: User) -> str:
     expires_at = int(time.time()) + settings.SUBSCRIPTION_TOKEN_TTL_SECONDS
-    signature = sign_subscription_token(str(user.vless_uuid), expires_at)
+    signature = sign_subscription_token(str(user.telegram_id), expires_at)
     host = getattr(settings, "WEBHOOK_URL_DOMAIN", request.url.hostname)
-    return f"https://{host}/webhook/sub/{user.vless_uuid}?exp={expires_at}&sig={signature}"
+    return f"https://{host}/webhook/sub/{user.telegram_id}?exp={expires_at}&sig={signature}"
 def _build_hiddify_deeplink(sub_url: str) -> str: return f"hiddify://install-config?url={quote(sub_url, safe='')}"
 
 # --- ГЕНЕРАТОР ПОДПИСОК ---
-@router.get("/webhook/sub/{uuid}")
-async def get_subscription(request: Request, uuid: str, os: str = "android", exp: int | None = None, sig: str | None = None, session: AsyncSession = Depends(get_read_session)):
+@router.get("/webhook/sub/{sub_id}")
+async def get_subscription(request: Request, sub_id: str, os: str = "android", exp: int | None = None, sig: str | None = None, session: AsyncSession = Depends(get_read_session)):
     client_ip = client_ip_from_request(request)
-    _enforce_rate_limit(f"subscription:{uuid}:{client_ip}", settings.SUBSCRIPTION_RATE_LIMIT_PER_MINUTE)
-    if not (exp and sig and verify_subscription_token(uuid, exp, sig)):
+    _enforce_rate_limit(f"subscription:{sub_id}:{client_ip}", settings.SUBSCRIPTION_RATE_LIMIT_PER_MINUTE)
+    if not (exp and sig and verify_subscription_token(sub_id, exp, sig)):
         if not settings.LEGACY_SUBSCRIPTION_URLS_ENABLED:
             return Response(content="", status_code=403)
-    user = (await session.execute(select(User).where(User.vless_uuid == uuid))).scalars().first()
-    if not user or not user.is_active: return Response(content="", status_code=403)
+            
+    if sub_id.isdigit() and len(sub_id) < 15:
+        user = (await session.execute(select(User).where(User.telegram_id == int(sub_id)))).scalars().first()
+    else:
+        user = (await session.execute(select(User).where(User.vless_uuid == sub_id))).scalars().first()
+        
+    divider = lambda text: f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:80?type=tcp#{quote(text)}"
+    if not user:
+        expired_config = [
+            divider("🔴 ПРОФИЛЬ УДАЛЕН ИЛИ НЕ НАЙДЕН"),
+            divider("🔄 ОБНОВИТЕ ССЫЛКУ ИЗ БОТА")
+        ]
+        return Response(content=base64.b64encode("\n".join(expired_config).encode("utf-8")).decode("utf-8"), media_type="text/plain")        
+    if not user.is_active:
+        sub_info = f"upload=0; download={user.traffic_total_bytes or 0}; total=1099511627776; expire={int(user.sub_end_date.timestamp()) if user.sub_end_date else 0}"
+        expired_config = [
+            divider("🔴 ПОДПИСКА ИСТЕКЛА!"),
+            divider("🔄 ПРОДЛИТЕ В БОТЕ ИЛИ КАБИНЕТЕ")
+        ]
+        
+        host = getattr(settings, "WEBHOOK_URL_DOMAIN", request.url.hostname)
+        cabinet_url = f"https://{host}/cabinet/{user.vless_uuid}"
+        
+        title = "🚀 AnKo Smart VPN (ИСТЕКЛА)"
+        headers = {
+            "Subscription-Userinfo": sub_info, 
+            "profile-update-interval": "12", 
+            "profile-web-page-url": cabinet_url,
+            "support-url": "tg://resolve?domain=AnKoVPN_bot",
+            "profile-title": f"base64:{base64.b64encode(title.encode('utf-8')).decode('utf-8')}"
+        }
+        return Response(content=base64.b64encode("\n".join(expired_config).encode("utf-8")).decode("utf-8"), media_type="text/plain", headers=headers)
 
-    host_fin_domain, host_fin_ip, host_de, host_nl, host_ru = settings.WEBHOOK_URL_DOMAIN, settings.FINLAND_PUBLIC_IP, settings.GERMANY_PUBLIC_IP, settings.NETHERLANDS_PUBLIC_IP, settings.RUSSIA_BALANCER_IP
+    host_fin_domain, host_fin_ip, host_de, host_nl, host_ru = settings.WEBHOOK_URL_DOMAIN.replace("pay.", ""), settings.FINLAND_PUBLIC_IP, settings.GERMANY_PUBLIC_IP, settings.NETHERLANDS_PUBLIC_IP, settings.RUSSIA_BALANCER_IP
     pbk, sid = settings.XRAY_REALITY_PUBLIC_KEY or getattr(settings, 'VLESS_PUBLIC_KEY', ''), settings.VLESS_SHORT_ID
-    fp = "safari" if os.lower().strip() in ["ios", "mac", "apple"] else "chrome"
+    fp = "qq"
 
-    def make_tcp(host, name, target_port=443, custom_sni="www.samsung.com", custom_sid=sid): return f"vless://{user.vless_uuid}@{host}:{target_port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni={custom_sni}&sid={custom_sid}&flow=xtls-rprx-vision#{quote(name)}"
+    def make_tcp(host, name, target_port=443, custom_sni=None, custom_sid=sid):
+        if not custom_sni:
+            if host == host_nl:
+                custom_sni = "yahoo.com"
+            elif host != host_ru:
+                custom_sni = "wikipedia.org" if target_port == 443 else "yahoo.com"
+            else:
+                custom_sni = getattr(settings, "VLESS_SNI", "www.samsung.com")
+        return f"vless://{user.vless_uuid}@{host}:{target_port}?encryption=none&security=reality&type=tcp&fp={fp}&pbk={pbk}&sni={custom_sni}&sid={custom_sid}&flow=xtls-rprx-vision#{quote(name)}"
     divider = lambda text: f"vless://00000000-0000-0000-0000-000000000000@127.0.0.1:80?type=tcp#{quote(text)}"
 
     configs = [
@@ -65,7 +103,6 @@ async def get_subscription(request: Request, uuid: str, os: str = "android", exp
         make_tcp(host_fin_ip, "🇫🇮 Финляндия 2", target_port=settings.XRAY_REDIRECT_PORT), 
         make_tcp(host_de, "🇩🇪 Германия 2", target_port=settings.XRAY_REDIRECT_PORT), 
         make_tcp(host_nl, "🇳🇱 Нидерланды 2", target_port=settings.XRAY_REDIRECT_PORT), 
-        make_tcp(host_fin_ip, "🇬🇧 Великобритания", target_port=2083),
         divider("▼ 🌍 ДЛЯ WI-FI ▼"), 
         make_tcp(host_fin_domain, "🇫🇮 Финляндия 1"), 
         make_tcp(host_de, "🇩🇪 Германия 1"), 
@@ -81,36 +118,55 @@ async def get_subscription(request: Request, uuid: str, os: str = "android", exp
         now = datetime.now(timezone.utc)
         end_date = user.sub_end_date.replace(tzinfo=timezone.utc) if user.sub_end_date.tzinfo is None else user.sub_end_date
         days_left = (end_date - now).days
-        if 0 <= days_left <= 3: configs.insert(0, divider(f"⚠️ ОСТАЛОСЬ {max(1, days_left)} ДН. ПОДПИСКИ!"))
+        if 0 <= days_left <= 3: 
+            configs = [divider(f"⚠️ ОСТАЛОСЬ {max(1, days_left)} ДН. ПРOДЛИТЕ!")] + configs
+        elif days_left < 0:
+            configs = [divider(f"🔴 ПОДПИСКА ИСТЕКЛА! ПРОДЛИТЕ В БОТЕ")] + configs
 
     sub_info = f"upload=0; download={user.traffic_total_bytes or 0}; total=1099511627776; expire={int(user.sub_end_date.timestamp()) if user.sub_end_date else 0}"
-    return Response(content=base64.b64encode("\n".join(configs).encode("utf-8")).decode("utf-8"), media_type="text/plain", headers={"Subscription-Userinfo": sub_info, "profile-update-interval": "12", "profile-title": f"base64:{base64.b64encode('🚀 AnKo Smart VPN'.encode('utf-8')).decode('utf-8')}"})
+    
+    host = getattr(settings, "WEBHOOK_URL_DOMAIN", request.url.hostname)
+    cabinet_url = f"https://{host}/cabinet/{user.vless_uuid}"
+    
+    title = "🚀 AnKo Smart VPN"
+    headers = {
+        "Subscription-Userinfo": sub_info, 
+        "profile-update-interval": "12", 
+        "profile-web-page-url": cabinet_url,
+        "support-url": "tg://resolve?domain=AnKoVPN_bot",
+        "profile-title": f"base64:{base64.b64encode(title.encode('utf-8')).decode('utf-8')}"
+    }
+    return Response(content=base64.b64encode("\n".join(configs).encode("utf-8")).decode("utf-8"), media_type="text/plain", headers=headers)
 
 
 # --- ВЕБ-ДИЗАЙН И НОВАЯ ЛОГИКА ОПЛАТЫ (ЮКАССА + ANYPAY) ---
 @router.get("/setup")
 async def root_instruction(request: Request): return templates.TemplateResponse(request=request, name="setup.html")
 
-@router.get("/cabinet/{uuid}/status")
-async def payment_status(request: Request, uuid: str, session: AsyncSession = Depends(get_write_session)):
+@router.get("/cabinet/{vless_uuid}/status")
+async def payment_status(request: Request, vless_uuid: str, session: AsyncSession = Depends(get_write_session)):
     client_ip = client_ip_from_request(request)
-    _enforce_rate_limit(f"payment_status:{uuid}:{client_ip}", settings.PAYMENT_STATUS_RATE_LIMIT_PER_MINUTE)
-    user = await session.scalar(select(User).where(User.vless_uuid == uuid))
+    _enforce_rate_limit(f"payment_status:{telegram_id}:{client_ip}", settings.PAYMENT_STATUS_RATE_LIMIT_PER_MINUTE)
+    user = await session.scalar(select(User).where(User.vless_uuid == vless_uuid))
     success = False
     
     if user:
         try:
             from app.services.yookassa_service import YooKassaService
+            from sqlalchemy import desc
             billing = get_billing_service(session)
-            pending = (await session.execute(select(Payment).where(Payment.user_id == user.id, Payment.status == "pending"))).scalars().all()
-            if pending:
-                yk = YooKassaService()
-                for attempt in range(5): 
-                    for p in pending:
+            latest_payment = (await session.execute(select(Payment).where(Payment.user_id == user.id).order_by(desc(Payment.created_at)).limit(1))).scalars().first()
+            
+            if latest_payment:
+                if latest_payment.status == "success":
+                    success = True
+                elif latest_payment.status == "pending":
+                    yk = YooKassaService()
+                    for attempt in range(5): 
                         try:
-                            remote = await yk.fetch_remote_payment(p.payment_id)
+                            remote = await yk.fetch_remote_payment(latest_payment.payment_id)
                             if remote and remote.status == "succeeded":
-                                await billing.activate_payment(p.payment_id, f"web_pull_{p.payment_id}")
+                                await billing.activate_payment(latest_payment.payment_id, f"web_pull_{latest_payment.payment_id}")
                                 await session.commit()
                                 success = True
                                 try:
@@ -121,8 +177,8 @@ async def payment_status(request: Request, uuid: str, session: AsyncSession = De
                                 break
                         except Exception:
                             logger.exception("Failed to refresh YooKassa payment status")
-                    if success: break
-                    await asyncio.sleep(2.0)
+                        if success: break
+                        await asyncio.sleep(2.0)
         except Exception:
             logger.exception("Payment status refresh failed")
 
@@ -133,15 +189,15 @@ async def payment_status(request: Request, uuid: str, session: AsyncSession = De
         icon_html = '<div class="w-24 h-24 rounded-[2rem] bg-brand-500/10 flex items-center justify-center text-brand-400 border border-brand-500/20 shadow-[0_0_40px_rgba(99,102,241,0.2)] relative"><i class="fa-solid fa-circle-notch fa-spin text-5xl"></i><div class="absolute inset-0 bg-brand-400/20 blur-2xl rounded-full z-[-1]"></div></div>'
         title, desc, delay = "Проверяем оплату", "Обычно банки обрабатывают перевод за 1-2 минуты.<br>Не закрывайте страницу, статус обновится автоматически.", 8000
 
-    html_content = f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Статус | AnKo VPN</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script>tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}; setTimeout(() => {{window.location.href = '/cabinet/{uuid}';}}, {delay});</script></head><body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white"><div class="max-w-md w-full relative z-10"><div class="bg-dark-800 rounded-3xl p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm text-center"><i class="fa-solid fa-receipt absolute -left-8 -bottom-8 text-[140px] text-slate-700/10 -rotate-12"></i><div class="relative z-10"><div class="mb-8 flex justify-center">{icon_html}</div><h2 class="text-3xl font-extrabold text-white mb-3 tracking-tight">{title}</h2><p class="text-slate-400 text-sm mb-8 leading-relaxed">{desc}</p><a href="/cabinet/{uuid}" class="inline-block w-full py-4 px-6 bg-dark-900/50 hover:bg-slate-800/80 text-slate-300 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 shadow-sm">Вернуться в кабинет</a></div></div></div></body></html>"""
+    html_content = f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Статус | AnKo VPN</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script>tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}; setTimeout(() => {{window.location.href = '/cabinet/{vless_uuid}';}}, {delay});</script></head><body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white"><div class="max-w-md w-full relative z-10"><div class="bg-dark-800 rounded-3xl p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm text-center"><i class="fa-solid fa-receipt absolute -left-8 -bottom-8 text-[140px] text-slate-700/10 -rotate-12"></i><div class="relative z-10"><div class="mb-8 flex justify-center">{icon_html}</div><h2 class="text-3xl font-extrabold text-white mb-3 tracking-tight">{title}</h2><p class="text-slate-400 text-sm mb-8 leading-relaxed">{desc}</p><a href="/cabinet/{vless_uuid}" class="inline-block w-full py-4 px-6 bg-dark-900/50 hover:bg-slate-800/80 text-slate-300 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 shadow-sm">Вернуться в кабинет</a></div></div></div></body></html>"""
     return HTMLResponse(content=html_content)
 
-@router.get("/cabinet/{uuid}/pay/{amount}")
-async def web_pay(request: Request, uuid: str, amount: float, session: AsyncSession = Depends(get_write_session)):
-    user = (await session.execute(select(User).where(User.vless_uuid == uuid))).scalars().first()
+@router.get("/cabinet/{vless_uuid}/pay/{amount}")
+async def web_pay(request: Request, vless_uuid: str, amount: float, session: AsyncSession = Depends(get_write_session)):
+    user = (await session.execute(select(User).where(User.vless_uuid == vless_uuid))).scalars().first()
     if not user: return Response("User not found", status_code=404)
     days, amount_str = (30 if amount == 100.0 else 90 if amount == 250.0 else 365), f"{amount:.2f}"
-    return_url = f"https://{getattr(settings, 'WEBHOOK_URL_DOMAIN', request.url.hostname)}/cabinet/{uuid}/status"
+    return_url = f"https://{getattr(settings, 'WEBHOOK_URL_DOMAIN', request.url.hostname)}/cabinet/{vless_uuid}/status"
 
     yk_url = ""
     try:
@@ -168,15 +224,73 @@ async def web_pay(request: Request, uuid: str, amount: float, session: AsyncSess
         except Exception:
             logger.exception("Failed to create CryptoBot invoice")
 
-    yk_btn_html = f'''<a href="{yk_url}" class="group block relative rounded-2xl bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 hover:border-brand-500 p-4 transition-all duration-200"><div class="absolute -top-2.5 right-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.5)]">Рекомендуем</div><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-brand-500/20 flex items-center justify-center text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-credit-card"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-brand-400 transition-colors">Карта РФ / СБП (ЮKassa)</div><div class="text-xs text-brand-400/80">Официальный банковский шлюз</div></div></div></a>''' if yk_url else ''
+    yk_btn_html = f'''<a href="#" onclick="openPayLink('{yk_url}'); return false;" class="group block relative rounded-2xl bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/30 hover:border-brand-500 p-4 transition-all duration-200"><div class="absolute -top-2.5 right-4 bg-brand-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-[0_0_10px_rgba(99,102,241,0.5)]">Рекомендуем</div><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-brand-500/20 flex items-center justify-center text-brand-400 border border-brand-500/30 shadow-[0_0_15px_rgba(99,102,241,0.2)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-credit-card"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-brand-400 transition-colors">Карта РФ / СБП (ЮKassa)</div><div class="text-xs text-brand-400/80">Официальный банковский шлюз</div></div></div></a>''' if yk_url else ''
     anypay_btn_html = f'''<a href="{anypay_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)] group-hover:scale-110 transition-transform"><i class="fa-solid fa-rotate"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-emerald-400 transition-colors">Запасной шлюз (AnyPay)</div><div class="text-xs text-slate-400">СБП / Карты РФ</div></div></div></a>''' if anypay_url else ''
-    crypto_btn_html = f'''<a href="{crypto_url}" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-blue-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:scale-110 transition-transform"><i class="fa-brands fa-bitcoin"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-blue-400 transition-colors">Криптовалюта</div><div class="text-xs text-slate-400">CryptoBot Telegram</div></div></div></a>''' if crypto_url else ''
+    crypto_btn_html = f'''<a href="#" onclick="openPayLink('{crypto_url}'); return false;" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-blue-500/50 p-4 transition-all duration-200"><div class="flex items-center gap-4"><div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 shadow-[0_0_15px_rgba(59,130,246,0.15)] group-hover:scale-110 transition-transform"><i class="fa-brands fa-bitcoin"></i></div><div class="text-left"><div class="font-medium text-white group-hover:text-blue-400 transition-colors">Криптовалюта</div><div class="text-xs text-slate-400">CryptoBot Telegram</div></div></div></a>''' if crypto_url else ''
 
-    return HTMLResponse(content=f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Оплата тарифа | AnKo VPN</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script>tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}</script></head><body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white"><div class="max-w-md w-full"><div class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm"><i class="fa-solid fa-wallet absolute -right-6 -top-6 text-[100px] text-slate-700/10 rotate-12"></i><div class="relative z-10"><div class="text-center mb-8"><h2 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Счет на {int(amount)} ₽</h2><p class="text-slate-400 text-sm">Выберите способ оплаты</p></div><div class="space-y-3">{yk_btn_html}{anypay_btn_html}{crypto_btn_html}</div><a href="/cabinet/{uuid}" class="mt-8 flex items-center justify-center gap-2 w-full py-4 px-6 bg-dark-900/50 text-slate-400 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 hover:bg-slate-800/80"><i class="fa-solid fa-arrow-left"></i> Отмена</a></div></div></div></body></html>""")
+    return HTMLResponse(content=f"""<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Оплата тарифа | AnKo VPN</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"><script>tailwind.config = {{ theme: {{ extend: {{ colors: {{ brand: {{ 400: '#818cf8', 500: '#6366f1' }}, dark: {{ 800: '#1e293b', 900: '#0f172a' }} }} }} }} }}</script></head><body class="bg-dark-900 text-slate-200 min-h-screen flex items-center justify-center p-4 font-sans selection:bg-brand-500 selection:text-white"><div class="max-w-md w-full"><div class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden backdrop-blur-sm"><i class="fa-solid fa-wallet absolute -right-6 -top-6 text-[100px] text-slate-700/10 rotate-12"></i><div class="relative z-10"><div class="text-center mb-8"><h2 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Счет на {int(amount)} ₽</h2><p class="text-slate-400 text-sm">Выберите способ оплаты</p></div><div class="space-y-3">{yk_btn_html}{crypto_btn_html}</div><a href="/cabinet/{vless_uuid}" class="mt-8 flex items-center justify-center gap-2 w-full py-4 px-6 bg-dark-900/50 text-slate-400 hover:text-white font-medium rounded-xl transition-all border border-slate-700/50 hover:bg-slate-800/80"><i class="fa-solid fa-arrow-left"></i> Отмена</a></div></div></div><script src="https://telegram.org/js/telegram-web-app.js"></script><script>function openPayLink(url) {{ if(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {{ window.Telegram.WebApp.openLink(url); }} else {{ window.location.href = url; }} }}</script></body></html>""")
 
-@router.get("/cabinet/{uuid}")
-async def web_cabinet(request: Request, uuid: str, session: AsyncSession = Depends(get_write_session)):
-    user = (await session.execute(select(User).where(User.vless_uuid == uuid))).scalars().first()
+
+# --- DEEPLINK REDIRECT (opens in system browser, redirects to app) ---
+@router.get("/deeplink")
+async def deeplink_redirect(request: Request, app: str = "happ", url: str = ""):
+    """Промежуточная страница для deeplink. JS на странице сам формирует правильный deeplink."""
+    import json as _json
+    app_safe = _json.dumps(app)
+    url_safe = _json.dumps(url)
+    
+    html = f"""<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Подключение AnKo VPN...</title>
+<style>
+  body {{ font-family: -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; 
+         display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+  .card {{ text-align: center; padding: 2rem; }}
+  .spinner {{ width: 40px; height: 40px; border: 4px solid #334155; border-top-color: #6366f1;
+              border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1.5rem; }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  h2 {{ font-size: 1.25rem; margin-bottom: 0.5rem; }}
+  p {{ color: #94a3b8; font-size: 0.875rem; margin-bottom: 1.5rem; }}
+  a {{ display: inline-block; padding: 0.75rem 1.5rem; background: #6366f1; color: white;
+       border-radius: 0.75rem; text-decoration: none; font-weight: 600; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="spinner"></div>
+  <h2>Открываем приложение...</h2>
+  <p>Если приложение не открылось автоматически, нажмите кнопку ниже.</p>
+  <a href="#" id="btn" onclick="doOpen(); return false;">Открыть вручную</a>
+</div>
+<script>
+  var appSchemes = {{
+    'happ': 'happ://import-remote-profile?url=',
+    'v2raytun': 'v2raytun://import-remote-profile?url=',
+    'v2box': 'v2box://import-remote-profile?url=',
+    'hiddify': 'hiddify://import-remote-profile?url='
+  }};
+  var appName = {app_safe};
+  var subUrl = {url_safe};
+  var prefix = appSchemes[appName] || appSchemes['happ'];
+  var deeplink = prefix + encodeURIComponent(subUrl) + '#AnKo%20Smart%20VPN';
+  
+  document.getElementById('btn').href = deeplink;
+  
+  function doOpen() {{
+    window.location.href = deeplink;
+  }}
+  
+  setTimeout(doOpen, 400);
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/cabinet/{vless_uuid}")
+async def web_cabinet(request: Request, vless_uuid: str, session: AsyncSession = Depends(get_write_session)):
+    user = (await session.execute(select(User).where(User.vless_uuid == vless_uuid))).scalars().first()
     if not user: return Response("Профиль не найден", status_code=404)
     user.preferred_os = (request.query_params.get("os") or user.preferred_os or "android").lower()
     await session.commit()
@@ -207,19 +321,33 @@ async def generate_nodes_config(request: Request, session: AsyncSession = Depend
     config = {
       "log": {"loglevel": "warning"},
       "api": {"tag": "api", "services": ["HandlerService", "LoggerService", "StatsService"]},
+      "policy": {
+        "levels": {
+          "0": {
+            "statsUserUplink": True,
+            "statsUserDownlink": True
+          }
+        },
+        "system": {
+          "statsInboundUplink": True,
+          "statsInboundDownlink": True
+        }
+      },
+
       "outbounds": [{"protocol": "freedom", "tag": "direct"}, {"protocol": "blackhole", "tag": "block"}],
       "routing": {"rules": [{"inboundTag": ["api"], "outboundTag": "api", "type": "field"}]},
+      "observatory": {"subjectSelector": ["eu-"], "probeUrl": "https://cp.cloudflare.com/generate_204", "probeInterval": "1m", "enableConcurrency": True},
       "inbounds": [
         {"listen": "0.0.0.0", "port": 10085, "protocol": "dokodemo-door", "settings": {"address": "127.0.0.1"}, "tag": "api"},
         {
           "listen": "0.0.0.0", "port": 443, "protocol": "vless", "tag": "vless-direct",
           "settings": {"clients": clients, "decryption": "none"},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "www.samsung.com:443", "xver": 0, "serverNames": ["www.samsung.com"], "privateKey": prv, "shortIds": [sid]}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": f"{getattr(settings, 'VLESS_SNI', 'www.samsung.com')}:443", "xver": 0, "serverNames": [getattr(settings, "VLESS_SNI", "www.samsung.com")], "privateKey": prv, "shortIds": [sid]}}
         },
         {
           "listen": "0.0.0.0", "port": redirect_port, "protocol": "vless", "tag": "vless-redirect",
           "settings": {"clients": clients, "decryption": "none"},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": "www.samsung.com:443", "xver": 0, "serverNames": ["www.samsung.com"], "privateKey": prv, "shortIds": [sid]}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"show": False, "dest": f"{getattr(settings, 'VLESS_SNI', 'www.samsung.com')}:443", "xver": 0, "serverNames": [getattr(settings, "VLESS_SNI", "www.samsung.com")], "privateKey": prv, "shortIds": [sid]}}
         }
       ]
     }
@@ -236,6 +364,20 @@ async def generate_transit_config(request: Request, session: AsyncSession = Depe
     config = {
       "log": {"loglevel": "warning"},
       "api": {"tag": "api", "services": ["HandlerService", "LoggerService", "StatsService"]},
+      "policy": {
+        "levels": {
+          "0": {
+            "statsUserUplink": True,
+            "statsUserDownlink": True
+          }
+        },
+        "system": {
+          "statsInboundUplink": True,
+          "statsInboundDownlink": True
+        }
+      },
+
+      "observatory": {"subjectSelector": ["eu-"], "probeUrl": "https://cp.cloudflare.com/generate_204", "probeInterval": "1m", "enableConcurrency": True},
       "inbounds": [
         {"listen": "0.0.0.0", "port": 10085, "protocol": "dokodemo-door", "settings": {"address": "127.0.0.1"}, "tag": "api"},
         {
@@ -244,8 +386,8 @@ async def generate_transit_config(request: Request, session: AsyncSession = Depe
           "streamSettings": {
               "network": "tcp", "security": "reality",
               "realitySettings": {
-                  "show": False, "dest": "www.samsung.com:443", "xver": 0,
-                  "serverNames": ["www.samsung.com"],
+                  "show": False, "dest": f"{getattr(settings, 'VLESS_SNI', 'www.samsung.com')}:443", "xver": 0,
+                  "serverNames": [getattr(settings, "VLESS_SNI", "www.samsung.com")],
                   "privateKey": prv, "shortIds": [sid]
               }
           }
@@ -281,22 +423,22 @@ async def generate_transit_config(request: Request, session: AsyncSession = Depe
         {
           "protocol": "vless", "tag": "eu-fin",
           "settings": {"vnext": [{"address": settings.FINLAND_PUBLIC_IP, "port": 443, "users": [{"id": "11111111-1111-1111-1111-111111111111", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": "www.samsung.com", "publicKey": pbk, "shortId": sid, "fingerprint": "chrome"}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": getattr(settings, "VLESS_SNI", "www.samsung.com"), "publicKey": pbk, "shortId": sid, "fingerprint": "qq"}}
         },
         {
           "protocol": "vless", "tag": "eu-ger",
           "settings": {"vnext": [{"address": settings.GERMANY_PUBLIC_IP, "port": 443, "users": [{"id": "11111111-1111-1111-1111-111111111111", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": "www.samsung.com", "publicKey": pbk, "shortId": sid, "fingerprint": "chrome"}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": "wikipedia.org", "publicKey": pbk, "shortId": sid, "fingerprint": "qq"}}
         },
         {
           "protocol": "vless", "tag": "eu-nl",
           "settings": {"vnext": [{"address": settings.NETHERLANDS_PUBLIC_IP, "port": 443, "users": [{"id": "11111111-1111-1111-1111-111111111111", "encryption": "none", "flow": "xtls-rprx-vision"}]}]},
-          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": "www.samsung.com", "publicKey": pbk, "shortId": sid, "fingerprint": "chrome"}}
+          "streamSettings": {"network": "tcp", "security": "reality", "realitySettings": {"serverName": "yahoo.com", "publicKey": pbk, "shortId": sid, "fingerprint": "qq"}}
         }
       ],
       "routing": {
         "domainStrategy": "IPIfNonMatch",
-        "balancers": [{"tag": "eu-balancer", "selector": ["eu-"]}],
+        "balancers": [{"tag": "eu-balancer", "selector": ["eu-"], "strategy": {"type": "leastPing"}}],
         "rules": [
           {"inboundTag": ["api"], "outboundTag": "api", "type": "field"},
           {"inboundTag": ["vless-ru-clean"], "outboundTag": "direct", "type": "field"},

@@ -7,7 +7,7 @@ main_keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🚀 Подключить VPN")],
         [KeyboardButton(text="👤 Профиль"), KeyboardButton(text="💳 Подписка")],
-        [KeyboardButton(text="📖 Инструкция"), KeyboardButton(text="💬 Поддержка")],
+        [KeyboardButton(text="📖 Инструкция")],
     ],
     resize_keyboard=True,
     is_persistent=True
@@ -30,9 +30,7 @@ main_inline_keyboard = InlineKeyboardMarkup(
             InlineKeyboardButton(text="📜 Правила (Оферта)", url=DOC_URL)
         ],
         # Слово "Контакты" - это 100% триггер для прохождения модерации
-        [
-            InlineKeyboardButton(text="💬 Контакты (Поддержка)", url=SUPPORT_URL)
-        ]
+
     ]
 )
 

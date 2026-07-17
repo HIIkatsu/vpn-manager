@@ -23,7 +23,7 @@ def subscription_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🥉 1 месяц — 100 ₽", callback_data="sub_pay_100.0")],
         [InlineKeyboardButton(text="🥈 3 месяца — 250 ₽ (-16%)", callback_data="sub_pay_250.0")],
         [InlineKeyboardButton(text="🥇 1 год — 900 ₽ (-25%) 🔥", callback_data="sub_pay_900.0")],
-        [InlineKeyboardButton(text="🎫 Промокод", callback_data="enter_promocode"), InlineKeyboardButton(text="📜 Правила", url=DOC_URL)],
+        [InlineKeyboardButton(text="🎫 Промокод", callback_data="enter_promocode")],
         [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main")]
     ])
 
@@ -44,10 +44,12 @@ async def inline_subscription_handler(callback: CallbackQuery, user_service: Use
     status = "🟢 Активна" if user.is_active else "🔴 Неактивна"
     sub_end = user.sub_end_date.strftime("%d.%m.%Y в %H:%M") if user.sub_end_date else "Не оформлена"
     await callback.message.edit_text(f"💎 <b>ПРЕМИУМ ДОСТУП</b>\n━━━━━━━━━━━━━━━━━━\nТекущий статус: {status}\nОплачено до: <code>{sub_end}</code>\n\n💳 <b>Выберите тарифный план:</b>\n\n<i>Нажимая на кнопку оплаты, вы принимаете Правила сервиса (кнопка ниже).</i>", reply_markup=subscription_keyboard(), parse_mode="HTML")
+    await callback.answer()
 
 @router.callback_query(F.data == "enter_promocode")
 async def enter_promocode_callback(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("🎟 <b>Активация промокода</b>\n\nПришлите ваш промокод ответным сообщением:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Отмена", callback_data="menu_subscription")]]))
+    await callback.answer()
     await state.set_state(PromoState.waiting_for_promo)
 
 @router.message(PromoState.waiting_for_promo)
@@ -73,6 +75,7 @@ async def process_promocode(message: Message, user_service: UserService, session
 @router.callback_query(F.data.startswith("sub_pay_"))
 async def subscription_pay_callback(callback: CallbackQuery, user_service: UserService, session: AsyncSession) -> None:
     await callback.message.edit_text("⏳ Формируем счет...", parse_mode="HTML")
+    await callback.answer()
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if not user: return
     amount = float(callback.data.split("_")[-1])
@@ -83,16 +86,12 @@ async def subscription_pay_callback(callback: CallbackQuery, user_service: UserS
         from app.services.yookassa_service import YooKassaService
         from app.db.repositories.payment_repo import PaymentRepository
         yk_service = YooKassaService()
-        yk_url = await yk_service.create_payment(PaymentRepository(session), user.id, amount, settings.PAYMENT_RETURN_URL)
+        yk_url = await yk_service.create_payment(PaymentRepository(session), user.id, amount, f"https://{settings.WEBHOOK_URL_DOMAIN}/api/payments/redirect_to_bot")
         await session.commit()
     except Exception:
         logger.exception("Failed to create YooKassa payment")
 
-    anypay_url = ""
-    if settings.ANYPAY_PROJECT_ID and settings.ANYPAY_SECRET_KEY:
-        anypay_pay_id = f"{user.telegram_id}{int(time.time() % 1000):03d}"
-        ap_params = {"merchant_id": settings.ANYPAY_PROJECT_ID, "pay_id": anypay_pay_id, "amount": amount_str, "currency": "RUB", "desc": "VPN", "success_url": settings.PAYMENT_RETURN_URL, "fail_url": settings.PAYMENT_RETURN_URL, "sign": hashlib.sha256(f"{settings.ANYPAY_PROJECT_ID}:{anypay_pay_id}:{amount_str}:RUB:VPN:{settings.PAYMENT_RETURN_URL}:{settings.PAYMENT_RETURN_URL}:{settings.ANYPAY_SECRET_KEY}".encode()).hexdigest()}
-        anypay_url = f"https://anypay.io/merchant?{urllib.parse.urlencode(ap_params)}"
+    
 
     crypto_url = ""
     if settings.CRYPTOBOT_TOKEN:
@@ -101,13 +100,12 @@ async def subscription_pay_callback(callback: CallbackQuery, user_service: UserS
                 async with http_session.post("https://pay.crypt.bot/api/createInvoice", headers={"Crypto-Pay-API-Token": settings.CRYPTOBOT_TOKEN}, json={"currency_type": "fiat", "fiat": "RUB", "amount": amount_ym, "description": f"VPN {days}d", "payload": f"{user.telegram_id}_{days}"}) as resp:
                     if resp.status == 200:
                         res_data = await resp.json()
-                        if res_data.get("ok"): crypto_url = res_data["result"].get("pay_url", "").replace("https://t.me/", "tg://resolve?domain=").replace("?start=", "&start=")
+                        if res_data.get("ok"): crypto_url = res_data["result"].get("pay_url", "").replace("https://t.me/", "https://t.me/").replace("?start=", "&start=")
         except Exception:
             logger.exception("Failed to create CryptoBot invoice")
 
     kb = []
     if yk_url: kb.append([InlineKeyboardButton(text="💳 Карта РФ / СБП (ЮKassa)", url=yk_url)])
-    if anypay_url: kb.append([InlineKeyboardButton(text="🔄 Запасной шлюз (AnyPay)", url=anypay_url)])
     if crypto_url: kb.append([InlineKeyboardButton(text="🪙 Криптовалюта", url=crypto_url)])
     kb.append([InlineKeyboardButton(text="🔄 Проверить оплату", callback_data="check_payment_status")])
     kb.append([InlineKeyboardButton(text="🔙 Выбрать другой тариф", callback_data="menu_subscription")])
@@ -148,13 +146,12 @@ async def check_payment_status_callback(callback: CallbackQuery, user_service: U
         try: await callback.message.edit_text(f"🧾 <b>Счет оплачен</b>\n\n💎 Ваша подписка активна до: <code>{user.sub_end_date.strftime('%d.%m.%Y %H:%M')}</code>", parse_mode="HTML")
         except Exception:
             logger.exception("Failed to update paid invoice message")
-        # 2. Шлем ОТДЕЛЬНЫЙ пуш
-        if payment_found:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👤 В личный кабинет", callback_data="menu_profile")]])
-            await callback.bot.send_message(chat_id=callback.from_user.id, text="✅ <b>Оплата успешно получена!</b>\n\nПодписка продлена, приятного пользования!", parse_mode="HTML", reply_markup=kb)
+        # 2. Пуш теперь отправляется централизованно через billing_service
+        pass
     else:
         kb = callback.message.reply_markup.inline_keyboard
         if not any("ankovpn_support_bot" in str(btn.url) for row in kb for btn in row): kb.append([InlineKeyboardButton(text="💬 Написать в поддержку", url=settings.SUPPORT_URL)])
         text_lines = callback.message.html_text.split('\n')
         amount_line = text_lines[0] if text_lines else "🧾 <b>Счет на оплату</b>"
         await callback.message.edit_text(f"{amount_line}\n\n⏳ <b>Платеж еще обрабатывается...</b>\n\nОбычно банки подтверждают перевод за 1-2 минуты. Как только деньги поступят, бот <b>автоматически</b> пришлет вам уведомление.\n\n⏱ <i>Последняя проверка: {check_time} (MSK)</i>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        await callback.answer("⏳ Платеж все еще обрабатывается банком. Пожалуйста, подождите минуту, уведомление придет автоматически!", show_alert=True)

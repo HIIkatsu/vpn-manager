@@ -2,8 +2,9 @@
 <html lang="ru" class="scroll-smooth">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Личный кабинет | AnKo Smart VPN</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <script>
@@ -23,204 +24,324 @@
     }
   </script>
 </head>
-<body class="bg-dark-900 text-slate-200 min-h-screen font-sans selection:bg-brand-500 selection:text-white">
+<body class="bg-dark-900 text-slate-200 min-h-screen font-sans selection:bg-brand-500 selection:text-white pb-6">
 
-  <nav class="bg-dark-800/50 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-50">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-bold text-white shadow-lg shadow-brand-500/30">
+  <!-- Компактная навигация -->
+  <nav class="bg-dark-800/80 backdrop-blur-md border-b border-slate-700/50 sticky top-0 z-50">
+    <div class="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center font-bold text-white text-sm shadow-lg shadow-brand-500/30">
           A
         </div>
-        <span class="font-bold text-xl tracking-tight text-white">AnKo Smart</span>
+        <span class="font-bold text-lg tracking-tight text-white">AnKo Smart</span>
       </div>
       <div>
         {% if user.is_active %}
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Подписка активна
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Активно
           </span>
         {% else %}
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
-            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Нет доступа
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Истекло
           </span>
         {% endif %}
       </div>
     </div>
   </nav>
 
-  <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+  <main class="max-w-md mx-auto px-4 py-5 space-y-5">
     
-    <div class="relative bg-gradient-to-br from-brand-600/10 to-dark-800 rounded-3xl p-6 md:p-10 border border-brand-500/20 shadow-2xl shadow-brand-500/10 overflow-hidden">
-      <i class="fa-solid fa-microchip absolute -right-10 -bottom-10 text-[200px] text-brand-500/5 rotate-12"></i>
-
-      <div class="relative z-10 text-center mb-8">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-semibold mb-4 border border-brand-500/20">
-          <i class="fa-solid fa-microchip"></i> Smart Routing Engine
+    <!-- Горизонтальный дашборд статистики -->
+    <div class="grid grid-cols-2 gap-3">
+      <!-- Блок с днями -->
+      <div class="bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl p-4 border border-slate-700/50 relative overflow-hidden group shadow-lg flex flex-col justify-between h-32">
+        <div class="absolute -right-4 -bottom-4 text-brand-500/5 rotate-12">
+          <i class="fa-solid fa-calendar-check text-[80px]"></i>
         </div>
-        <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">AnKo <span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-400 to-indigo-300">Smart</span> VPN</h1>
-      </div>
-
-      <div class="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 text-left max-w-5xl mx-auto">
-        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
-          <i class="fa-solid fa-shield-cat text-brand-400 text-2xl mb-3"></i>
-          <div class="text-white font-semibold mb-1">Пробивает всё</div>
-          <div class="text-slate-400 text-xs leading-relaxed">Автоматический обход ТСПУ блокировок. Инста, Ютуб и Discord работают без сбоев.</div>
+        <div class="relative z-10 flex items-center gap-2">
+          <i class="fa-regular fa-clock text-brand-400 text-sm"></i>
+          <h3 class="text-slate-400 font-medium text-xs uppercase tracking-wider">Дни</h3>
         </div>
-        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
-          <i class="fa-solid fa-robot text-brand-400 text-2xl mb-3"></i>
-          <div class="text-white font-semibold mb-1">Доступ к ИИ</div>
-          <div class="text-slate-400 text-xs leading-relaxed">Чистые IPv6 адреса. Google, ChatGPT и западные антифроды пускают без капчи и банов.</div>
+        <div class="relative z-10">
+          <div class="text-3xl font-black text-white tracking-tight flex items-baseline gap-1">
+            {{ days_left }} <span class="text-sm font-bold text-slate-500 tracking-normal">дн.</span>
+          </div>
+          <div class="text-[10px] text-brand-400 mt-1 font-medium truncate">
+            До {{ end_date_str }}
+          </div>
         </div>
-        <div class="bg-dark-900/60 backdrop-blur-sm p-5 rounded-2xl border border-slate-700/50 hover:border-brand-500/30 transition-colors">
-          <i class="fa-solid fa-building-columns text-brand-400 text-2xl mb-3"></i>
-          <div class="text-white font-semibold mb-1">Свои сервисы</div>
-          <div class="text-slate-400 text-xs leading-relaxed">Сбер, Госуслуги и Кинопоиск открываются напрямую с вашей реальной скоростью.</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-dark-800 rounded-2xl p-6 border border-slate-700/50 relative overflow-hidden group flex flex-col justify-center">
-        <div class="absolute -right-6 -top-6 text-slate-700/30 group-hover:text-slate-700/50 transition-colors">
-          <i class="fa-solid fa-calendar-check text-8xl"></i>
-        </div>
-        <h3 class="text-slate-400 text-sm font-medium mb-1 relative z-10">Осталось дней</h3>
-        <div class="text-3xl font-bold text-white relative z-10 mb-2">{{ days_left }}</div>
-        <div class="text-xs text-slate-500 relative z-10">Активно до {{ end_date_str }}</div>
       </div>
       
-      <div class="bg-dark-800 rounded-2xl p-6 border border-slate-700/50 relative overflow-hidden group">
-        <div class="absolute -right-6 -top-6 text-slate-700/30 group-hover:text-slate-700/50 transition-colors">
-          <i class="fa-solid fa-server text-8xl"></i>
+      <!-- Блок с трафиком -->
+      <div class="bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl p-4 border border-slate-700/50 relative overflow-hidden group shadow-lg flex flex-col justify-between h-32">
+        <div class="absolute -right-4 -bottom-4 text-brand-500/5 rotate-12">
+          <i class="fa-solid fa-server text-[80px]"></i>
         </div>
-        <div class="relative z-10 flex justify-between items-end mb-3">
-          <div>
-            <h3 class="text-slate-400 text-sm font-medium mb-1">Расход трафика</h3>
-            <div class="text-3xl font-bold text-white">{{ formatted_traffic }}</div>
-          </div>
-          <div class="text-right">
-            <div class="text-brand-400 font-bold text-lg">{{ traffic_percent }}%</div>
-            <div class="text-xs text-slate-500">из 1 ТБ</div>
-          </div>
+        <div class="relative z-10 flex items-center gap-2">
+          <i class="fa-solid fa-chart-pie text-brand-400 text-sm"></i>
+          <h3 class="text-slate-400 font-medium text-xs uppercase tracking-wider">Трафик</h3>
         </div>
-        <div class="relative z-10 w-full bg-slate-900 rounded-full h-3 mb-2 overflow-hidden border border-slate-700/50">
-          <div class="bg-gradient-to-r from-brand-600 to-brand-400 h-full rounded-full relative overflow-hidden transition-all duration-1000" style="width: {{ traffic_percent }}%">
-            <div class="absolute top-0 left-0 bottom-0 -translate-x-full bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.25)_50%,transparent_100%)] w-1/2 animate-shimmer"></div>
+        
+        <div class="relative z-10">
+          <div class="text-2xl font-black text-white tracking-tight flex items-baseline justify-between">
+            {{ formatted_traffic }}
+            <span class="text-brand-400 font-bold text-sm">{{ traffic_percent }}%</span>
           </div>
+          
+          <div class="w-full bg-slate-900/80 rounded-full h-1.5 mt-2 mb-1 overflow-hidden">
+            <div class="bg-gradient-to-r from-brand-600 to-brand-400 h-full rounded-full shadow-[0_0_8px_rgba(99,102,241,0.5)]" style="width: {{ traffic_percent }}%"></div>
+          </div>
+          <div class="text-[9px] text-slate-500 font-medium text-right">из 1 ТБ</div>
         </div>
-        <div class="relative z-10 text-xs text-slate-500 text-right">Обновляется автоматически</div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div class="lg:col-span-2 space-y-8">
-        <section class="bg-dark-800 rounded-3xl p-6 md:p-8 border border-slate-700/50 shadow-xl">
-          <h2 class="text-2xl font-bold text-white mb-6"><i class="fa-solid fa-bolt text-brand-400 mr-2"></i> Быстрое подключение</h2>
-          
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-slate-400 mb-3">1. Выберите ваше устройство:</label>
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {% set platforms = [
-                ('android', 'Android', 'fa-android'), 
-                ('ios', 'iOS', 'fa-apple'), 
-                ('windows', 'Windows', 'fa-windows'), 
-                ('macos', 'macOS', 'fa-apple'), 
-                ('linux', 'Linux', 'fa-linux'),
-                ('router', 'Роутеры / TV', 'fa-network-wired')
-              ] %}
-              {% for pid, label, icon in platforms %}
-                <a href="/cabinet/{{ user.vless_uuid }}?os={{ pid }}" 
-                   class="flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl border transition-all duration-200 text-xs font-medium
-                   {{ 'bg-brand-500/10 border-brand-500 text-brand-400' if os_name == pid else 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-700/50' }}">
-                  <i class="fa-brands {{ icon }} text-lg"></i> {{ label }}
-                </a>
-              {% endfor %}
-            </div>
-          </div>
-
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-slate-400 mb-3">2. Импортируйте профиль:</label>
-            <div class="flex flex-col sm:flex-row gap-3">
-              <a href="{{ hiddify_deeplink }}" class="flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold shadow-lg shadow-brand-500/25 transition-all active:scale-95">
-                <i class="fa-solid fa-paper-plane"></i> В один клик (Hiddify)
-              </a>
-              <button onclick="copySub()" class="flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium transition-all active:scale-95 border border-slate-600">
-                <i class="fa-regular fa-copy"></i> Копировать ссылку
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-400 mb-2">Ваша персональная ссылка подписки:</label>
-            <div class="relative">
-              <input id="subUrl" class="w-full rounded-xl bg-dark-900 border border-slate-700 py-3 pl-4 pr-12 text-slate-400 font-mono text-sm focus:outline-none focus:border-brand-500 transition-colors" readonly value="{{ sub_url }}" />
-              <div class="absolute inset-y-0 right-0 flex items-center pr-3 text-brand-500 opacity-50">
-                <i class="fa-solid fa-link"></i>
-              </div>
-            </div>
-          </div>
-        </section>
+    <!-- Инструкции по подключению -->
+    <section class="bg-gradient-to-b from-dark-800 to-dark-900/50 rounded-2xl p-5 border border-slate-700/50 shadow-lg relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-brand-400 via-brand-500 to-brand-600"></div>
+      
+      <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-bolt text-brand-400"></i> Подключение
+      </h2>
+      
+      <div class="mb-5">
+        <label class="text-[11px] font-semibold text-slate-400 mb-2 uppercase tracking-wide block">1. Выберите устройство</label>
+        <div class="grid grid-cols-4 gap-2" id="os-buttons">
+          {% set platforms = [
+            ('android', 'Android', 'fa-android', 'text-emerald-400'), 
+            ('ios', 'iOS', 'fa-apple', 'text-slate-200'), 
+            ('windows', 'Win', 'fa-windows', 'text-sky-400'), 
+            ('macos', 'Mac', 'fa-apple', 'text-slate-200')
+          ] %}
+          {% for pid, label, icon, icon_color in platforms %}
+            <button onclick="changeOs('{{ pid }}')" id="btn-{{ pid }}"
+               class="os-btn flex flex-col items-center justify-center gap-1.5 py-2.5 rounded-xl border transition-colors text-[10px] font-semibold
+               {{ 'bg-brand-500/20 border-brand-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.2)]' if os_name == pid else 'bg-dark-900 border-slate-700/50 text-slate-400' }}">
+              <i class="fa-brands {{ icon }} text-lg {{ icon_color if not os_name == pid else '' }}"></i> 
+              {{ label }}
+            </button>
+          {% endfor %}
+        </div>
       </div>
 
-      <div class="space-y-8">
-        <section class="bg-dark-800 rounded-3xl p-6 border border-slate-700/50 shadow-xl">
-          <h2 class="text-xl font-bold text-white mb-2"><i class="fa-solid fa-wallet text-emerald-400 mr-2"></i> Продление</h2>
-          <p class="text-slate-400 text-sm mb-6">Безопасная оплата через СБП, Tinkoff или карты РФ.</p>
-
-          <div class="space-y-3">
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/100" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200">
-              <div class="flex justify-between items-center">
-                <div>
-                  <div class="font-medium text-white">1 месяц</div>
-                  <div class="text-sm text-slate-400">Базовый доступ</div>
-                </div>
-                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">100 ₽</div>
-              </div>
-            </a>
-
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/250" class="group block relative rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-500 p-4 transition-all duration-200">
-              <div class="absolute -top-2.5 right-4 bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">Популярно</div>
-              <div class="flex justify-between items-center">
-                <div>
-                  <div class="font-medium text-white">3 месяца</div>
-                  <div class="text-sm text-emerald-400/80">Выгода ~17%</div>
-                </div>
-                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">250 ₽</div>
-              </div>
-            </a>
-
-            <a href="/cabinet/{{ user.vless_uuid }}/pay/900" class="group block relative rounded-2xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-emerald-500/50 p-4 transition-all duration-200">
-              <div class="flex justify-between items-center">
-                <div>
-                  <div class="font-medium text-white">1 год</div>
-                  <div class="text-sm text-slate-400">Максимальная выгода</div>
-                </div>
-                <div class="text-xl font-bold text-emerald-400 group-hover:scale-110 transition-transform">900 ₽</div>
-              </div>
-            </a>
-          </div>
-          
-          <div class="mt-6 flex items-center justify-center gap-2 text-slate-500 text-xs">
-            <i class="fa-solid fa-lock"></i> Защищено протоколами AnyPay (СБП/Карты РФ)
-          </div>
-        </section>
+      <div class="space-y-3">
+        <div class="mb-4 mt-2">
+        <label class="text-[11px] font-semibold text-slate-400 mb-3 uppercase tracking-wide block">2. Выберите ваше приложение</label>
+        <div class="grid grid-cols-2 gap-3" id="app-buttons">
+          <button onclick="changeApp('happ', 'happ://import-remote-profile?url=')" id="app-happ" class="app-btn bg-brand-500/20 border-brand-500 text-white shadow-[0_0_10px_rgba(99,102,241,0.2)] py-2.5 px-2 rounded-xl border text-[13px] font-bold transition-colors flex items-center justify-center gap-2"><img src="data:image/png;base64,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" class="w-5 h-5 rounded object-contain bg-white"> Happ</button>
+          <button onclick="changeApp('v2raytun', 'v2raytun://import-remote-profile?url=')" id="app-v2raytun" class="app-btn bg-dark-900 border-slate-700/50 text-slate-400 py-2.5 px-2 rounded-xl border text-[13px] font-bold transition-colors shadow-sm flex items-center justify-center gap-2"><svg viewBox="0 0 100 100" class="w-5 h-5 rounded object-contain shadow-sm" style="background:#000;"><rect width="100" height="100" fill="#000" rx="22"/><text x="50%" y="68%" font-family="Arial, sans-serif" font-weight="900" font-size="58" font-style="italic" fill="#fff" text-anchor="middle" letter-spacing="-2">V2</text></svg> v2rayTun</button>
+          <button onclick="changeApp('v2box', 'v2box://import-remote-profile?url=')" id="app-v2box" class="app-btn bg-dark-900 border-slate-700/50 text-slate-400 py-2.5 px-2 rounded-xl border text-[13px] font-bold transition-colors shadow-sm flex items-center justify-center gap-2"><svg viewBox="0 0 100 100" class="w-5 h-5 rounded object-contain shadow-sm" style="background: linear-gradient(135deg, #a855f7, #6366f1);"><rect width="100" height="100" fill="url(#grad1)" rx="22"/><defs><linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#a855f7;stop-opacity:1" /><stop offset="100%" style="stop-color:#6366f1;stop-opacity:1" /></linearGradient></defs><path d="M50 25 L80 40 L50 55 L20 40 Z" fill="#fff" opacity="0.9"/><path d="M20 40 L50 55 L50 85 L20 70 Z" fill="#e2e8f0" opacity="0.8"/><path d="M80 40 L50 55 L50 85 L80 70 Z" fill="#cbd5e1" opacity="0.6"/></svg> V2Box</button>
+          <button onclick="changeApp('hiddify', 'hiddify://import-remote-profile?url=')" id="app-hiddify" class="app-btn bg-dark-900 border-slate-700/50 text-slate-400 py-2.5 px-2 rounded-xl border text-[13px] font-bold transition-colors shadow-sm flex items-center justify-center gap-2"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAG1BMVEVHcExFX+lFX+lFX+lFX+lFX+lFX+lFX+lFX+mYybWnAAAACHRSTlMA6MeuLX9fEoc93XcAAAGESURBVHic7ZrZbgMhDEXDsJj//+JGk0zZTBK1cC219zwmCB85GWNgbjdCCCGEEPJfCClYhhefc0528ZO7x8+HVfhw5BNnE/7MvqHAI/tmAlf2jQRK9m0EquxbCDTZxwt02YcL9NkHC8iQfbCAkn6sgJZ/ClBgt0BKYilwlt3S86EFJJ7zeyuBq+waCZRFrwhEXSBuCC9VLF996hSivJjohzSLnn8/fjFdy4EWkP6XBguMLQdUYGz4GoGQFBZuTofsdwJJfQrdss1p0AtNEdA7snWb00mhw1VCfXoKUIACewWkXssNBKKrKz1c4LHwlUoOFgjPvW7p6LAC3wufjUDVdlgING2HgUDbdsAF+qYPLBCGcx6sgNL0IQXUUz6cwOSUDyYwiY8TCJP5KUABClDAXMB/PGCTwNUWa6czGIH8PHCcfb1f4A0UAAi8/Av8/afAvA6YV0IKUIAC5luzcuMyeUOjHKP98uJS/DHiqxsficqAo76QUQfsuDglhBBCCCGEELKAL8ywda8zfP8bAAAAAElFTkSuQmCC" class="w-5 h-5 rounded object-contain bg-white"> Hiddify</button>
+        </div>
       </div>
-    </div>
+      <div class="space-y-3">
+        <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide block pt-2">3. Импортируйте профиль</label>
+        
+        <button onclick="openVpnLink()" class="flex items-center justify-center gap-2 w-full py-3.5 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 text-white font-bold text-sm shadow-lg shadow-brand-500/20 active:scale-[0.98] transition-transform">
+          <i class="fa-solid fa-paper-plane"></i> 
+          Подключить в 1 клик
+        </button>
+        
+        <button onclick="copySub()" id="copyBtn" class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-dark-900 border border-slate-700 text-white font-medium text-sm active:bg-slate-800 transition-colors">
+          <i class="fa-regular fa-copy text-brand-400"></i> 
+          Копировать ссылку
+        </button>
+
+        <input id="subUrl" type="text" class="absolute opacity-0 -z-10" readonly value="{{ sub_url }}" />
+      </div>
+    </section>
+
+    <!-- Блок продления (компактный) -->
+    <section class="bg-gradient-to-b from-dark-800 to-dark-900/50 rounded-2xl p-5 border border-slate-700/50 shadow-lg">
+      <h2 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-wallet text-emerald-400"></i> Продление подписки
+      </h2>
+      
+      <div class="grid grid-cols-3 gap-2">
+        <a href="/cabinet/{{ user.vless_uuid }}/pay/100" class="flex flex-col items-center justify-center p-3 rounded-xl bg-dark-900 border border-slate-700 hover:border-emerald-500/50 active:bg-slate-800 transition-colors relative">
+          <div class="text-xs text-slate-400 mb-1">1 мес</div>
+          <div class="text-sm font-bold text-emerald-400">100 ₽</div>
+        </a>
+
+        <a href="/cabinet/{{ user.vless_uuid }}/pay/250" class="flex flex-col items-center justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40 active:bg-emerald-500/20 transition-colors relative shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+          <div class="absolute -top-2 bg-gradient-to-r from-emerald-500 to-emerald-400 text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Выгода</div>
+          <div class="text-xs text-white mb-1 mt-1">3 мес</div>
+          <div class="text-sm font-bold text-emerald-400">250 ₽</div>
+        </a>
+
+        <a href="/cabinet/{{ user.vless_uuid }}/pay/900" class="flex flex-col items-center justify-center p-3 rounded-xl bg-dark-900 border border-slate-700 hover:border-emerald-500/50 active:bg-slate-800 transition-colors relative">
+          <div class="text-xs text-slate-400 mb-1">1 год</div>
+          <div class="text-sm font-bold text-emerald-400">900 ₽</div>
+        </a>
+      </div>
+    </section>
   </main>
 
   <script>
+    // Инициализация Telegram Web App
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+      
+      if (window.Telegram.WebApp.setHeaderColor) {
+        window.Telegram.WebApp.setHeaderColor('#0f172a');
+      }
+      if (window.Telegram.WebApp.setBackgroundColor) {
+        window.Telegram.WebApp.setBackgroundColor('#0f172a');
+      }
+      
+      if (window.Telegram.WebApp.enableClosingConfirmation) {
+        window.Telegram.WebApp.enableClosingConfirmation();
+      }
+    }
+
+    let currentSubUrl = "{{ sub_url }}";
+    let currentAppPrefix = "happ://import-remote-profile?url=";
+    
+    function initSubUrl() {
+       let os = "{{ os_name }}";
+       if (!currentSubUrl.includes("os=")) {
+           currentSubUrl += (currentSubUrl.includes("?") ? "&" : "?") + "os=" + os;
+       }
+       document.getElementById('subUrl').value = currentSubUrl;
+    }
+    
+    function changeApp(appId, prefix) {
+      document.querySelectorAll('.app-btn').forEach(btn => {
+        btn.classList.remove('bg-brand-500/20', 'border-brand-500', 'text-white', 'shadow-[0_0_10px_rgba(99,102,241,0.2)]');
+        btn.classList.add('bg-dark-900', 'border-slate-700/50', 'text-slate-400');
+      });
+      const activeBtn = document.getElementById('app-' + appId);
+      if(activeBtn) {
+          activeBtn.classList.remove('bg-dark-900', 'border-slate-700/50', 'text-slate-400');
+          activeBtn.classList.add('bg-brand-500/20', 'border-brand-500', 'text-white', 'shadow-[0_0_10px_rgba(99,102,241,0.2)]');
+      }
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.selectionChanged();
+      }
+      currentAppPrefix = prefix;
+    }
+
+    function openVpnLink() {
+      let subUrl = currentSubUrl;
+      let appName = 'happ';
+      
+      if (currentAppPrefix.startsWith('happ://')) appName = 'happ';
+      else if (currentAppPrefix.startsWith('v2raytun://')) appName = 'v2raytun';
+      else if (currentAppPrefix.startsWith('v2box://')) appName = 'v2box';
+      else if (currentAppPrefix.startsWith('hiddify://')) appName = 'hiddify';
+      
+      // Step 1: Copy subscription URL to clipboard
+      navigator.clipboard.writeText(subUrl).then(() => {
+        
+        // Step 2: Open the app via deeplink page (system browser)
+        let deeplinkPage = '/deeplink?app=' + encodeURIComponent(appName) + '&url=' + encodeURIComponent(subUrl);
+        
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+          let fullUrl = "https://" + window.location.hostname + deeplinkPage;
+          window.Telegram.WebApp.openLink(fullUrl);
+        } else {
+          window.open(deeplinkPage, '_blank');
+        }
+        
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+        
+        // Step 3: Show message 
+        let btn = document.querySelector('button[onclick="openVpnLink()"]');
+        if(btn) {
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Ссылка скопирована!';
+            
+            setTimeout(() => {
+              if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.showAlert) {
+                window.Telegram.WebApp.showAlert('✅ Ссылка скопирована в буфер обмена!\n\nПриложение должно предложить импортировать профиль автоматически.\n\nЕсли нет — нажмите "+" в приложении и выберите "Импорт из буфера обмена".');
+              }
+              setTimeout(() => { btn.innerHTML = originalHtml; }, 4000);
+            }, 500);
+        }
+        
+      }).catch(() => {
+        // Fallback: if clipboard fails, just copy via input
+        const el = document.getElementById('subUrl');
+        el.select();
+        el.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        
+        let deeplinkPage = '/deeplink?app=' + encodeURIComponent(appName) + '&url=' + encodeURIComponent(subUrl);
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+          window.Telegram.WebApp.openLink("https://" + window.location.hostname + deeplinkPage);
+        }
+        
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.showAlert) {
+          window.Telegram.WebApp.showAlert('✅ Ссылка скопирована!\n\nВ приложении нажмите "+" и выберите "Импорт из буфера обмена".');
+        }
+      });
+    }
+
+    function changeOs(osId) {
+      document.querySelectorAll('.os-btn').forEach(btn => {
+        btn.classList.remove('bg-brand-500/20', 'border-brand-500', 'text-white', 'shadow-[0_0_10px_rgba(99,102,241,0.2)]');
+        btn.classList.add('bg-dark-900', 'border-slate-700/50', 'text-slate-400');
+        const icon = btn.querySelector('i');
+        if (icon) {
+            if (osId !== btn.id.replace('btn-', '')) {
+                icon.classList.remove('text-emerald-400', 'text-sky-400');
+            } else {
+                if(osId === 'android') icon.classList.add('text-emerald-400');
+                if(osId === 'windows') icon.classList.add('text-sky-400');
+            }
+        }
+      });
+      
+      const activeBtn = document.getElementById('btn-' + osId);
+      if(activeBtn) {
+          activeBtn.classList.remove('bg-dark-900', 'border-slate-700/50', 'text-slate-400');
+          activeBtn.classList.add('bg-brand-500/20', 'border-brand-500', 'text-white', 'shadow-[0_0_10px_rgba(99,102,241,0.2)]');
+      }
+      
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.selectionChanged();
+      }
+      
+      if (currentSubUrl.includes("os=")) {
+          currentSubUrl = currentSubUrl.replace(/os=[^&]*/, "os=" + osId);
+      } else {
+          currentSubUrl += (currentSubUrl.includes("?") ? "&" : "?") + "os=" + osId;
+      }
+      
+      document.getElementById('subUrl').value = currentSubUrl;
+      
+      if (osId === 'android') changeApp('happ', 'happ://import-remote-profile?url=');
+      if (osId === 'ios' || osId === 'macos') changeApp('happ', 'happ://import-remote-profile?url=');
+      if (osId === 'windows') changeApp('hiddify', 'hiddify://import-remote-profile?url=');
+      
+      fetch('/cabinet/{{ user.vless_uuid }}?os=' + osId, { method: 'GET' }).catch(e => console.log(e));
+    }
+    
+    initSubUrl();
+
     function copySub() {
       const el = document.getElementById('subUrl');
       el.select();
       el.setSelectionRange(0, 99999); 
       navigator.clipboard.writeText(el.value).then(() => {
-        const btn = event.target.closest('button');
-        if (!btn) return;
+        const btn = document.getElementById('copyBtn');
         const originalHtml = btn.innerHTML;
+        
         btn.innerHTML = '<i class="fa-solid fa-check text-emerald-400"></i> Скопировано!';
-        btn.classList.add('border-emerald-500', 'text-emerald-400');
+        btn.classList.replace('border-slate-700', 'border-emerald-500/50');
+        btn.classList.add('bg-emerald-500/10');
+        
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+        
         setTimeout(() => {
           btn.innerHTML = originalHtml;
-          btn.classList.remove('border-emerald-500', 'text-emerald-400');
+          btn.classList.replace('border-emerald-500/50', 'border-slate-700');
+          btn.classList.remove('bg-emerald-500/10');
         }, 2000);
       });
     }

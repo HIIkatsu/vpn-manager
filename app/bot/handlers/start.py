@@ -23,15 +23,16 @@ def get_welcome_text(is_new_trial: bool = False) -> str:
             "<i>Вы получаете полный доступ ко всем серверам без ограничений скорости. По истечении этого времени ваш профиль сохранится еще на 7 дней. Достаточно будет просто оплатить подписку, и интернет снова заработает — перенастраивать ничего не придется!</i>\n\n"
         )
     text += (
-        "Мы создали сервис, который просто работает. Никаких ручных переключений и обрывов — наш алгоритм сделает всё за вас.\n\n"
-        "<blockquote>✨ <b>Умный обход:</b> Российские сайты и банки открываются напрямую. Заблокированные ресурсы — через зарубежные серверы.\n"
-        "🛡 <b>Защита:</b> Провайдер видит обычный безопасный трафик, а мы поддерживаем резервные профили на случай сбоев.\n"
-        "⚡️ <b>Скорость:</b> Максимальная скорость для просмотра видео в 4K и загрузки тяжелых файлов без зависаний.</blockquote>\n\n"
-        "👇 <b>Панель управления:</b>"
+        "Мы создали сервис, который просто работает. Больше не нужно вручную выбирать страны и переключать серверы!\n\n"
+        "<blockquote>✨ <b>Единый Умный профиль:</b> Наша система сама балансирует нагрузку. Российские сайты и банки открываются напрямую (без потерь скорости), а заблокированные ресурсы — через наши быстрые зарубежные серверы.</blockquote>\n\n"
+        "🤖 <b>Ваш персональный ИИ-ассистент</b>\n"
+        "<blockquote>Если у вас возникнут вопросы по настройке, тарифам или работе сервиса, просто напишите их прямо в этот чат. Наш умный помощник на базе нейросети ответит вам моментально и поможет решить любую задачу.</blockquote>\n\n"
+        "👇 <b>Основное меню:</b>"
     )
     return text
 
 async def check_and_issue_trial(user, session: AsyncSession) -> bool:
+    # Оставляем функцию для совместимости, но логика выдачи теперь в get_or_create
     if not user.sub_end_date:
         user.sub_end_date = datetime.now(timezone.utc) + timedelta(days=3)
         user.is_active = True
@@ -48,13 +49,17 @@ async def start_handler(message: Message, command: CommandObject, session: Async
         if ref_id == message.from_user.id:
             ref_id = None
 
-    user = await user_service.get_or_create(message.from_user.id, message.from_user.username, referrer_telegram_id=ref_id)
+    user, is_new = await user_service.get_or_create(message.from_user.id, message.from_user.username, referrer_telegram_id=ref_id)
     
     # ПРОВЕРКА: Если ОС выбрана, сразу кидаем в главное меню
-    if user and user.preferred_os:
+    if user and user.preferred_os and not is_new:
         msg = await message.answer("Загрузка...", reply_markup=main_keyboard)
         await msg.delete()
         await message.answer(get_welcome_text(), reply_markup=main_inline_keyboard)
+        return
+        
+    if is_new:
+        await message.answer(get_welcome_text(is_new_trial=True), reply_markup=main_inline_keyboard)
         return
 
     msg = await message.answer("Запуск сервиса...", reply_markup=main_keyboard)
@@ -165,6 +170,7 @@ async def sos_callback(callback: CallbackQuery, user_service: UserService) -> No
         "2. Нажмите «🔄 Перевыпустить ключ» для сброса сессий."
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Написать в поддержку", url="https://t.me/ankovpn_support_bot")],
         [InlineKeyboardButton(text="🔄 Перевыпустить ключ", callback_data="sos_regen_ask")],
         [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_main")]
     ])
@@ -183,23 +189,49 @@ async def sos_regen_ask_callback(callback: CallbackQuery) -> None:
 async def sos_regen_confirm_callback(callback: CallbackQuery, user_service: UserService, session: AsyncSession) -> None:
     user = await user_service.get_by_telegram_id(callback.from_user.id)
     if not user: return
-    dispatcher = ActivePushDispatcher()
-    await callback.message.edit_text("⏳ Уничтожаем старые сессии...")
-    removed, _ = await dispatcher.remove_client(telegram_id=user.telegram_id, event_id=f"regen-remove:{user.id}")
-    if not removed:
-        await callback.message.edit_text("⚠️ Не удалось удалить старый профиль на всех серверах. Попробуйте ещё раз через несколько минут.")
-        return
-    await asyncio.sleep(4)
+    
+    # Пытаемся изменить текст. Если сообщение "протухло" - просто игнорируем ошибку и идем дальше
+    try:
+        await callback.message.edit_text("⏳ Генерируем новые ключи и ставим задачу на синхронизацию...")
+    except Exception:
+        pass
+        
+    import uuid, json, time
+    from sqlalchemy import text
+    
+    old_telegram_id = str(user.telegram_id)
+    old_id = user.id
+    
     user.vless_uuid = str(uuid.uuid4())
     user.is_active = True
     session.add(user)
+    
+    # Only add one event: update_client
+    update_payload = json.dumps({"telegram_id": str(user.telegram_id), "uuid": user.vless_uuid, "event_id": f"regen-update:{old_id}"})
+    ts = int(time.time() * 1000)
+    
+    await session.execute(text("""
+        INSERT INTO outbox_events (event_type, aggregate_type, aggregate_id, dedup_key, payload_json, status, attempts, created_at)
+        VALUES 
+        ('xray.update_client', 'user', :uid, :dk_upd, :upd, 'pending', 0, NOW())
+    """), {
+        "uid": str(old_id), 
+        "dk_upd": f"xray.update_client:regen_{old_id}_{ts}",
+        "upd": update_payload
+    })
+    
     await session.commit()
-    added, _ = await dispatcher.add_client(telegram_id=user.telegram_id, uuid=user.vless_uuid, event_id=f"regen-add:{user.id}")
-    if not added:
-        await callback.message.edit_text("⚠️ Новый профиль сохранён, но пока доставлен не на все серверы. Попробуйте перевыпустить ключ ещё раз через несколько минут.")
-        return
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 Подключить новый VPN", callback_data="menu_connect")],
         [InlineKeyboardButton(text="🔙 В главное меню", callback_data="back_to_main")]
     ])
-    await callback.message.edit_text("✅ <b>Ключ перевыпущен!</b>\nУдалите старый профиль из приложения и добавьте новый.", reply_markup=keyboard)
+    
+    msg_text = "✅ <b>Ключ успешно перевыпущен!</b>\n\nТеперь просто зайдите в ваше приложение VPN и нажмите <b>«Обновить подписку»</b>. Старый профиль удалять не нужно."
+    
+    # Пытаемся изменить старое. Если оно Inaccessible - шлем новое сообщение в чат
+    try:
+        await callback.message.edit_text(msg_text, reply_markup=keyboard)
+    except Exception:
+        await callback.bot.send_message(callback.from_user.id, msg_text, reply_markup=keyboard)
+

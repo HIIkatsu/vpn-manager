@@ -83,7 +83,7 @@ def _signature(secret: str, timestamp: str, body: bytes) -> str:
 
 
 class ClientUpdate(BaseModel):
-    action: str = Field(pattern="^(add|remove)$")
+    action: str = Field(pattern="^(add|remove|update)$")
     telegram_id: str
     uuid: str | None = None
     event_id: str | None = None
@@ -99,6 +99,9 @@ class XrayConfigMutator:
     async def remove_client(self, email: str) -> bool:
         return await self._mutate("remove", email=email, uuid=None)
 
+    async def update_client(self, email: str, uuid: str) -> bool:
+        return await self._mutate("update", email=email, uuid=uuid)
+
     async def _mutate(self, action: str, *, email: str, uuid: str | None) -> bool:
         async with self.lock:
             config = _load_xray_config()
@@ -110,9 +113,9 @@ class XrayConfigMutator:
                 settings = inbound.setdefault("settings", {})
                 clients = settings.setdefault("clients", [])
                 existing_idx = next((idx for idx, client in enumerate(clients) if str(client.get("email")) == email), None)
-                if action == "add":
+                if action == "add" or action == "update":
                     if uuid is None:
-                        raise MutationError("uuid is required for add")
+                        raise MutationError(f"uuid is required for {action}")
                     new_client = _client_payload(email, uuid, tag)
                     if existing_idx is None:
                         clients.append(new_client)
@@ -193,6 +196,10 @@ class XrayGrpcMutator:
     async def remove_client(self, email: str) -> bool:
         return await self._alter_all("remove", email=email, uuid=None)
 
+    async def update_client(self, email: str, uuid: str) -> bool:
+        await self._alter_all("remove", email=email, uuid=None)
+        return await self._alter_all("add", email=email, uuid=uuid)
+
     async def _alter_all(self, action: str, *, email: str, uuid: str | None) -> bool:
         if self.channel is None:
             raise RuntimeError("Xray channel is not initialized")
@@ -263,10 +270,18 @@ class XrayClientMutator:
     async def remove_client(self, email: str) -> bool:
         return await self._mutate("remove", email=email, uuid=None)
 
+    async def update_client(self, email: str, uuid: str) -> bool:
+        return await self._mutate("update", email=email, uuid=uuid)
+
     async def _mutate(self, action: str, *, email: str, uuid: str | None) -> bool:
         if XRAY_MUTATION_MODE in {"auto", "grpc"}:
             try:
-                ok = await (self.grpc.add_client(email, str(uuid)) if action == "add" else self.grpc.remove_client(email))
+                if action == "add":
+                    ok = await self.grpc.add_client(email, str(uuid))
+                elif action == "update":
+                    ok = await self.grpc.update_client(email, str(uuid))
+                else:
+                    ok = await self.grpc.remove_client(email)
             except Exception as exc:
                 logger.warning("Xray gRPC mutation raised an exception: %s", exc)
                 ok = False
@@ -274,7 +289,12 @@ class XrayClientMutator:
                 return ok
             logger.warning("Falling back to config-file mutation after Xray gRPC failure")
         try:
-            return await (self.config.add_client(email, str(uuid)) if action == "add" else self.config.remove_client(email))
+            if action == "add":
+                return await self.config.add_client(email, str(uuid))
+            elif action == "update":
+                return await self.config.update_client(email, str(uuid))
+            else:
+                return await self.config.remove_client(email)
         except Exception as exc:
             logger.error("Xray config-file mutation failed: %s", exc)
             return False
@@ -329,8 +349,50 @@ async def apply_client_update(
         if not update.uuid:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="uuid is required for add")
         ok = await mutator.add_client(email=update.telegram_id, uuid=update.uuid)
+    elif update.action == "update":
+        if not update.uuid:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="uuid is required for update")
+        ok = await mutator.update_client(email=update.telegram_id, uuid=update.uuid)
     else:
         ok = await mutator.remove_client(email=update.telegram_id)
     if not ok:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="xray mutation failed")
     return {"status": "ok", "action": update.action, "telegram_id": update.telegram_id}
+
+@app.get("/internal/xray/stats")
+async def get_stats(
+    request: Request,
+    authorization: str = Header(alias="Authorization"),
+    timestamp: str = Header(alias="X-Sync-Timestamp"),
+    signature: str = Header(alias="X-Sync-Signature"),
+) -> dict[str, int]:
+    await _verify_request(request, authorization, timestamp, signature)
+    target, _ = _load_xray_targets()
+    try:
+        cmd = [XRAY_BINARY, "api", "stats", "--server=" + target, "--reset"]
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            logger.warning(f"Failed to get stats: {stderr.decode('utf-8', errors='replace')}")
+            return {}
+        
+        stdout_str = stdout.decode("utf-8", errors="replace").strip()
+        if not stdout_str:
+            return {}
+            
+        data = json.loads(stdout_str)
+        stats_dict = {}
+        for item in data.get("stat", []):
+            name = item.get("name", "")
+            value = item.get("value", 0)
+            if ">>>traffic>>>" in name:
+                parts = name.split(">>>")
+                if len(parts) >= 4 and parts[0] == "user":
+                    email = parts[1]
+                    stats_dict[email] = stats_dict.get(email, 0) + int(value)
+        return stats_dict
+    except Exception as exc:
+        logger.error("Failed to get stats: %s", exc)
+        return {}

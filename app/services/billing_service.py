@@ -68,6 +68,13 @@ class BillingService:
                 dedup_key=f"xray.add_client:{payment.payment_id}",
                 payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": user.vless_uuid})
             )
+            
+            try:
+                msg = f"✅ <b>Оплата успешно получена!</b>\n\nВаша подписка активна до: <b>{user.sub_end_date.strftime('%d.%m.%Y')}</b>"
+                await self.notifier.send_message(chat_id=user.telegram_id, text=msg, parse_mode="HTML")
+            except Exception as e:
+                self.logger.warning(f"Failed to notify user {user.telegram_id}: {e}")
+                
             if getattr(user, 'referrer_telegram_id', None):
                 try:
                     ref_res = await self.session.execute(select(User).where(User.telegram_id == user.referrer_telegram_id))
@@ -76,7 +83,7 @@ class BillingService:
                         if referrer.sub_end_date is None or referrer.sub_end_date < now: referrer.sub_end_date = now + timedelta(days=7)
                         else: referrer.sub_end_date += timedelta(days=7)
                         referrer.is_active = True
-                        asyncio.create_task(self.notifier.send_message(chat_id=referrer.telegram_id, text="🎁 <b>По вашей ссылке зарегистрировался друг!</b>\n\nВам начислено <b>+7 дней</b>."))
+                        await self.notifier.send_message(chat_id=referrer.telegram_id, text="🎁 <b>По вашей ссылке зарегистрировался друг!</b>\n\nВам начислено <b>+7 дней</b>.")
                         await self.outbox.enqueue(
                             event_type="xray.add_client", aggregate_type="referral_reward", aggregate_id=str(referrer.id),
                             dedup_key=f"xray.add_client:ref_{referrer.id}_{int(now.timestamp())}",

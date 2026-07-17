@@ -3,7 +3,7 @@ import time
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from app.bot.keyboards.main import main_keyboard, main_inline_keyboard
 from app.core.security import sign_subscription_token
 from app.core.settings import settings
@@ -30,7 +30,11 @@ def generate_progress_bar(used_bytes: int, total_bytes: int = LIMIT_BYTES) -> st
     return f"[{bar}] {percent}%"
 
 def get_profile_data(user, webhook_domain: str, used_bytes: int = 0):
-    if user.sub_end_date:
+    if user.is_active and not user.sub_end_date:
+        sub_end_date = "Безлимит (Навсегда)"
+        status_emoji = "🟢"
+        status_text = "Активна"
+    elif user.sub_end_date:
         sub_end_date = user.sub_end_date.strftime("%d.%m.%Y в %H:%M")
         status_emoji = "🟢" if user.is_active else "🔴"
         status_text = "Активна" if user.is_active else "Истекла"
@@ -59,12 +63,12 @@ def get_profile_data(user, webhook_domain: str, used_bytes: int = 0):
     inline_buttons = []
     os_name = getattr(user, "preferred_os", "android")
     expires_at = int(time.time()) + settings.SUBSCRIPTION_TOKEN_TTL_SECONDS
-    signature = sign_subscription_token(str(user.vless_uuid), expires_at)
-    sub_url = f"https://{webhook_domain}/webhook/sub/{user.vless_uuid}?os={os_name}&exp={expires_at}&sig={signature}"
+    signature = sign_subscription_token(str(user.telegram_id), expires_at)
+    sub_url = f"https://{webhook_domain}/webhook/sub/{user.telegram_id}?os={os_name}&exp={expires_at}&sig={signature}"
     cabinet_url = f"https://{webhook_domain}/cabinet/{user.vless_uuid}?os={os_name}"
     
     if user.is_active:
-        inline_buttons.append([InlineKeyboardButton(text="🌐 Открыть веб-кабинет", url=cabinet_url)])
+        inline_buttons.append([InlineKeyboardButton(text="🌐 Открыть веб-кабинет", web_app=WebAppInfo(url=cabinet_url))])
         inline_buttons.append([InlineKeyboardButton(text="📋 Скопировать ключ", copy_text={"text": sub_url})])
     else:
         profile_text += "⚠️ <b>Доступ ограничен.</b> Перейдите в раздел подписки для оплаты."
@@ -117,7 +121,7 @@ async def referral_menu_callback(callback: CallbackQuery, user_service: UserServ
     # Короткий текст для копирования
     promo_text = (
         "🚀 AnKo VPN — интернет без границ!\n"
-        "YouTube 4K и Инста без зависаний.\n\n"
+        "Умный профиль, встроенный ИИ-помощник и YouTube 4K без зависаний.\n\n"
         f"🎁 3 дня бесплатно. Забирай доступ:\n{ref_link}"
     )
 
@@ -190,13 +194,13 @@ async def force_check_payment_callback(callback: CallbackQuery):
             ])
             try:
                 await callback.message.edit_text(
-                    f"✅ <b>Оплата успешно получена!</b>\n\nВы оформили подписку <b>{period_text}</b>. Все настройки конфигурации уже обновлены и ждут вас в личном кабинете.",
+                    f"🧾 <b>Счет оплачен</b>\n\n💎 Ваша подписка активна. Все настройки уже применены.",
                     parse_mode="HTML",
                     reply_markup=keyboard_success
                 )
             except Exception:
                 pass
-            await callback.answer(f"✅ Подписка {period_text} активирована!")
+            await callback.answer(f"✅ Подписка активирована!")
             return
             
         if latest_payment.status in ("pending", "processing"):
@@ -213,7 +217,7 @@ async def force_check_payment_callback(callback: CallbackQuery):
                 )
             except Exception:
                 pass
-            await callback.answer("⏳ Платёж обрабатывается банком.", show_alert=False)
+            await callback.answer("⏳ Платёж все еще обрабатывается банком. Обычно это занимает около 1-3 минут. Пожалуйста, подождите, уведомление придет автоматически!", show_alert=True)
             return
             
         fail_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -234,12 +238,12 @@ async def force_check_payment_callback(callback: CallbackQuery):
 @router.message(F.text.in_({"📖 Инструкция", "Помощь", "Поддержка"}))
 async def help_command_handler(message: Message) -> None:
     text = (
-        "💡 <b>Помощь и устранение неполадок</b>\n\n"
-        "Если VPN не подключается, выполните эти шаги перед обращением в поддержку:\n\n"
+        "💡 <b>Помощь и поддержка</b>\n\n"
+        "🤖 <b>Ваш личный ИИ-помощник</b> готов ответить на любые вопросы прямо в этом чате. Просто спросите его о вашей проблеме (например: <i>«Как настроить?»</i> или <i>«Почему не грузит ютуб?»</i>).\n\n"
+        "Если вы хотите решить проблему самостоятельно, попробуйте следующие шаги:\n"
         "1. <b>Синхронизация:</b> После оплаты или первой активации ключа серверам может потребоваться пара минут на применение настроек. Немного подождите.\n"
-        "2. <b>Перевыпуск ключа:</b> Перейдите в раздел «🆘 Не работает VPN» и нажмите «Перевыпустить ключ». Это принудительно обновит конфигурацию и сбросит зависшую сессию.\n"
-        "3. <b>Проверка доступности:</b> В вашем приложении-клиенте нажмите на иконку <b>спидометра</b> (проверка задержки/ping). Если рядом с профилем появились цифры — сервер доступен и работает штатно.\n\n"
-        "<i>Если базовые шаги не помогли — ознакомьтесь с подробной инструкцией или свяжитесь с нами.</i>"
+        "2. <b>Перевыпуск ключа:</b> Перейдите в раздел «🆘 Не работает VPN» и нажмите «Перевыпустить ключ». Это принудительно обновит конфигурацию и сбросит зависшую сессию.\n\n"
+        "<i>Если ничего не помогло — напишите нашему ИИ, и если он не справится, он переведет вас на оператора.</i>"
     )
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 Открыть инструкцию", url="https://neurosmmai.ru/setup")],

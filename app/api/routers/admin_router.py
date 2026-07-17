@@ -62,7 +62,8 @@ async def admin_dashboard(
     
     for u in users_db:
         used_bytes = live_stats.get(str(u.telegram_id), 0)
-        total_used_bytes = await TrafficStatsService.get_total_with_live(session, u.telegram_id, used_bytes)
+        base_total = max(int(u.traffic_total_bytes or 0), 0)
+        total_used_bytes = base_total + max(int(used_bytes or 0), 0)
         total_bytes += total_used_bytes
         is_currently_active = u.is_active and (u.sub_end_date is None or u.sub_end_date >= now)
         if is_currently_active:
@@ -130,7 +131,7 @@ async def admin_user_toggle(
     user = await session.get(User, user_id)
     if user:
         action_type = "toggle_disable" if user.is_active else "toggle_enable"
-        action = PendingAction(action_type=action_type, user_id=user.id)
+        action = PendingAction(action_type=action_type, user_id=user.id, payload={"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid})
         session.add(action)
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -146,7 +147,7 @@ async def admin_user_add_days(
         now = datetime.now(timezone.utc)
         base_date = user.sub_end_date if user.sub_end_date and user.sub_end_date > now else now
         user.sub_end_date = base_date + timedelta(days=days)
-        session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
+        session.add(PendingAction(action_type="toggle_enable", user_id=user.id, payload={"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}))
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/user/set_infinite")
@@ -158,7 +159,7 @@ async def admin_user_set_infinite(
     user = await session.get(User, user_id)
     if user:
         user.sub_end_date = None
-        session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
+        session.add(PendingAction(action_type="toggle_enable", user_id=user.id, payload={"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}))
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/user/reset_traffic")
@@ -178,7 +179,7 @@ async def admin_user_delete(
 ):
     user = await session.get(User, user_id)
     if user:
-        action = PendingAction(action_type="delete", user_id=user.id)
+        action = PendingAction(action_type="delete", user_id=user.id, payload={"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid})
         session.add(action)
     return RedirectResponse(url="/admin", status_code=303)
 
@@ -207,68 +208,57 @@ async def admin_promo_delete(
 
 @router.post("/admin/apply")
 async def admin_apply(admin=Depends(get_current_admin)):
-    async with async_session_maker() as session:
-        result = await session.execute(select(PendingAction).order_by(PendingAction.created_at.asc()))
-        actions = result.scalars().all()
-        if not actions:
-            return RedirectResponse(url="/admin", status_code=303)
-        action_snapshots = []
-        for action in actions:
-            snapshot = {"id": action.id, "action_type": action.action_type, "user_id": action.user_id, "payload": action.payload}
-            if action.user_id:
-                user = await session.get(User, action.user_id)
-                if user:
-                    snapshot.update({"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid})
-            action_snapshots.append(snapshot)
-    
-    outcomes: dict[int, bool] = {}
-    dispatcher = ActivePushDispatcher()
-    
-    for action in action_snapshots:
-        success = False
-        error = None
-        try:
-            action_type = action["action_type"]
-            if action_type == "add":
-                payload = action.get("payload") or {}
-                success, error = await dispatcher.add_client(telegram_id=payload["telegram_id"], uuid=str(payload["vless_uuid"]), event_id=f"admin:{action['id']}")
-            elif action_type in ("toggle_disable", "delete") and action.get("telegram_id"):
-                success, error = await dispatcher.remove_client(telegram_id=action["telegram_id"], event_id=f"admin:{action['id']}")
-            elif action_type == "toggle_enable" and action.get("telegram_id") and action.get("vless_uuid"):
-                success, error = await dispatcher.add_client(telegram_id=action["telegram_id"], uuid=str(action["vless_uuid"]), event_id=f"admin:{action['id']}")
-            if error:
-                logger.warning("Failed to active-push admin action: %s", error)
-        except Exception:
-            logger.exception("Failed to deliver pending action to Xray")
-        outcomes[action["id"]] = success
-        
     async with session_scope(async_session_maker) as session:
-        for action in action_snapshots:
-            if not outcomes.get(action["id"]):
-                continue
-            db_action = await session.get(PendingAction, action["id"])
-            if not db_action:
-                continue
-            if action["action_type"] == "add":
-                payload = action.get("payload") or {}
-                user = await session.scalar(select(User).where(User.telegram_id == int(payload["telegram_id"])))
-                if not user:
-                    session.add(User(telegram_id=int(payload["telegram_id"]), vless_uuid=payload["vless_uuid"], is_active=True))
+        result = await session.execute(select(PendingAction).options(joinedload(PendingAction.user)).order_by(PendingAction.created_at.asc()))
+        db_actions = result.scalars().all()
+        if not db_actions:
+            return RedirectResponse(url="/admin", status_code=303)
+            
+        import json, time
+        from app.db.repositories.outbox_repo import OutboxRepository
+        outbox = OutboxRepository(session)
+        
+        for db_action in db_actions:
+            action_type = db_action.action_type
+            user = db_action.user
+            payload = db_action.payload or {}
+            
+            tg_id = user.telegram_id if user else payload.get("telegram_id")
+            uuid_val = user.vless_uuid if user else payload.get("vless_uuid")
+            
+            if action_type == "add":
+                existing_user = await session.scalar(select(User).where(User.telegram_id == int(tg_id)))
+                if not existing_user:
+                    user_to_add = User(telegram_id=int(tg_id), vless_uuid=uuid_val, is_active=True)
+                    session.add(user_to_add)
+                    await session.flush()
+                    user = user_to_add
                 else:
-                    user.is_active = True
-            elif action["action_type"] == "toggle_disable" and action.get("user_id"):
-                user = await session.get(User, action["user_id"])
-                if user:
-                    user.is_active = False
-            elif action["action_type"] == "toggle_enable" and action.get("user_id"):
-                user = await session.get(User, action["user_id"])
-                if user:
-                    user.is_active = True
-            elif action["action_type"] == "delete" and action.get("user_id"):
-                user = await session.get(User, action["user_id"])
-                if user:
-                    await delete_user_with_relations(session, user)
-                    continue
+                    existing_user.is_active = True
+                    user = existing_user
+                
+                await outbox.enqueue(
+                    event_type="xray.add_client", aggregate_type="user", aggregate_id=str(user.id),
+                    dedup_key=f"xray.add_client:{user.id}:admin_{int(time.time())}_{db_action.id}",
+                    payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": str(user.vless_uuid)})
+                )
+            elif action_type == "toggle_disable" and user:
+                user.is_active = False
+                await outbox.enqueue(
+                    event_type="xray.remove_client", aggregate_type="user", aggregate_id=str(user.id),
+                    dedup_key=f"xray.remove_client:{user.id}:admin_{int(time.time())}_{db_action.id}",
+                    payload_json=json.dumps({"telegram_id": user.telegram_id})
+                )
+            elif action_type == "toggle_enable" and user:
+                user.is_active = True
+                await outbox.enqueue(
+                    event_type="xray.add_client", aggregate_type="user", aggregate_id=str(user.id),
+                    dedup_key=f"xray.add_client:{user.id}:admin_{int(time.time())}_{db_action.id}",
+                    payload_json=json.dumps({"telegram_id": user.telegram_id, "uuid": str(user.vless_uuid)})
+                )
+            elif action_type == "delete" and user:
+                await delete_user_with_relations(session, user)
+                
             await session.delete(db_action)
             
     return RedirectResponse(url="/admin", status_code=303)
@@ -284,7 +274,7 @@ async def admin_user_set_date(
     if user and end_date:
         parsed_date = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         user.sub_end_date = parsed_date
-        session.add(PendingAction(action_type="toggle_enable", user_id=user.id))
+        session.add(PendingAction(action_type="toggle_enable", user_id=user.id, payload={"telegram_id": user.telegram_id, "vless_uuid": user.vless_uuid}))
     return RedirectResponse(url="/admin", status_code=303)
 
 @router.post("/admin/pending/cancel")
