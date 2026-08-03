@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+.env
+
+# System / Logs
+*.log
+audit_results/

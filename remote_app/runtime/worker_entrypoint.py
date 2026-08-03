@@ -1,0 +1,33 @@
+import asyncio
+import logging
+
+from app.runtime.workers import outbox_loop, traffic_stats_loop, expiry_loop, notification_loop, remote_full_sync_loop
+from app.services.xray_manager import XrayManager
+
+
+logger = logging.getLogger(__name__)
+
+async def run_workers() -> None:
+    xray_manager = XrayManager()
+    await xray_manager.initialize()
+    
+    # Запускаем все микро-таски конкурентно
+    try:
+        await asyncio.gather(
+            outbox_loop(),
+            traffic_stats_loop(),
+            expiry_loop(), notification_loop(), remote_full_sync_loop()
+        )
+    finally:
+        await XrayManager.close_channel()
+
+
+def main() -> None:
+    try:
+        asyncio.run(run_workers())
+    except KeyboardInterrupt:
+        logger.info("Shutdown requested by keyboard interrupt")
+
+
+if __name__ == "__main__":
+    main()

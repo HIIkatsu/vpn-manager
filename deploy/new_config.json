@@ -1,0 +1,453 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "api": {
+    "tag": "api",
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService"
+    ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true,
+        "handshake": 4,
+        "connIdle": 300,
+        "uplinkOnly": 2,
+        "downlinkOnly": 5,
+        "bufferSize": 4
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  "observatory": {
+    "subjectSelector": [
+      "eu-"
+    ],
+    "probeUrl": "https://cp.cloudflare.com/generate_204",
+    "probeInterval": "1m",
+    "enableConcurrency": true
+  },
+  "inbounds": [
+    {
+      "listen": "0.0.0.0",
+      "port": 10085,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      },
+      "tag": "api"
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "tag": "vless-smart-transit",
+      "settings": {
+        "clients": [
+          {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "flow": "xtls-rprx-vision",
+            "email": "0"
+          },
+          {
+            "id": "81d04058-8c4c-43d7-a347-f4b637c33a2a",
+            "flow": "xtls-rprx-vision",
+            "email": "1078937205"
+          },
+          {
+            "id": "f67a8345-3e47-4ddf-a568-6781631f5873",
+            "flow": "xtls-rprx-vision",
+            "email": "1632881013"
+          },
+          {
+            "id": "994e61ba-d102-45d2-a20c-4abb816de65d",
+            "flow": "xtls-rprx-vision",
+            "email": "1480942640"
+          },
+          {
+            "id": "b489d545-04a6-4d90-8afd-9e11b72e4c41",
+            "flow": "xtls-rprx-vision",
+            "email": "1780466329"
+          },
+          {
+            "id": "49a27da9-8abd-44d1-9a42-4c631450e241",
+            "flow": "xtls-rprx-vision",
+            "email": "1445959170"
+          },
+          {
+            "id": "09dcb601-db2c-45bf-b044-b11db9f98279",
+            "flow": "xtls-rprx-vision",
+            "email": "1778580693"
+          },
+          {
+            "id": "3026e3dc-e837-4bb1-ad7e-0000495639d6",
+            "flow": "xtls-rprx-vision",
+            "email": "761042250"
+          },
+          {
+            "id": "f0aef9ce-f30a-42ef-ab7d-2771de1514c1",
+            "flow": "xtls-rprx-vision",
+            "email": "840649258"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.samsung.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.samsung.com"
+          ],
+          "privateKey": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+          "shortIds": [
+            "45b6b57266629592"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true
+      }
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 10444,
+      "protocol": "vless",
+      "tag": "vless-ru-clean",
+      "settings": {
+        "clients": [
+          {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "flow": "xtls-rprx-vision",
+            "email": "0"
+          },
+          {
+            "id": "81d04058-8c4c-43d7-a347-f4b637c33a2a",
+            "flow": "xtls-rprx-vision",
+            "email": "1078937205"
+          },
+          {
+            "id": "f67a8345-3e47-4ddf-a568-6781631f5873",
+            "flow": "xtls-rprx-vision",
+            "email": "1632881013"
+          },
+          {
+            "id": "994e61ba-d102-45d2-a20c-4abb816de65d",
+            "flow": "xtls-rprx-vision",
+            "email": "1480942640"
+          },
+          {
+            "id": "b489d545-04a6-4d90-8afd-9e11b72e4c41",
+            "flow": "xtls-rprx-vision",
+            "email": "1780466329"
+          },
+          {
+            "id": "49a27da9-8abd-44d1-9a42-4c631450e241",
+            "flow": "xtls-rprx-vision",
+            "email": "1445959170"
+          },
+          {
+            "id": "09dcb601-db2c-45bf-b044-b11db9f98279",
+            "flow": "xtls-rprx-vision",
+            "email": "1778580693"
+          },
+          {
+            "id": "3026e3dc-e837-4bb1-ad7e-0000495639d6",
+            "flow": "xtls-rprx-vision",
+            "email": "761042250"
+          },
+          {
+            "id": "f0aef9ce-f30a-42ef-ab7d-2771de1514c1",
+            "flow": "xtls-rprx-vision",
+            "email": "840649258"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "ya.ru:443",
+          "xver": 0,
+          "serverNames": [
+            "ya.ru",
+            "yandex.ru"
+          ],
+          "privateKey": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+          "shortIds": [
+            "45b6b57266629593"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true
+      }
+    },
+    {
+      "listen": "0.0.0.0",
+      "port": 10445,
+      "protocol": "vless",
+      "tag": "vless-ru-whitelist",
+      "settings": {
+        "clients": [
+          {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "flow": "xtls-rprx-vision",
+            "email": "0"
+          },
+          {
+            "id": "81d04058-8c4c-43d7-a347-f4b637c33a2a",
+            "flow": "xtls-rprx-vision",
+            "email": "1078937205"
+          },
+          {
+            "id": "f67a8345-3e47-4ddf-a568-6781631f5873",
+            "flow": "xtls-rprx-vision",
+            "email": "1632881013"
+          },
+          {
+            "id": "994e61ba-d102-45d2-a20c-4abb816de65d",
+            "flow": "xtls-rprx-vision",
+            "email": "1480942640"
+          },
+          {
+            "id": "b489d545-04a6-4d90-8afd-9e11b72e4c41",
+            "flow": "xtls-rprx-vision",
+            "email": "1780466329"
+          },
+          {
+            "id": "49a27da9-8abd-44d1-9a42-4c631450e241",
+            "flow": "xtls-rprx-vision",
+            "email": "1445959170"
+          },
+          {
+            "id": "09dcb601-db2c-45bf-b044-b11db9f98279",
+            "flow": "xtls-rprx-vision",
+            "email": "1778580693"
+          },
+          {
+            "id": "3026e3dc-e837-4bb1-ad7e-0000495639d6",
+            "flow": "xtls-rprx-vision",
+            "email": "761042250"
+          },
+          {
+            "id": "f0aef9ce-f30a-42ef-ab7d-2771de1514c1",
+            "flow": "xtls-rprx-vision",
+            "email": "840649258"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "vk.com:443",
+          "xver": 0,
+          "serverNames": [
+            "vk.com",
+            "m.vk.com"
+          ],
+          "privateKey": "sCPQc_KdGUR4T4CGYAmZj27asF8SZ32_S_o0nh-IjmI",
+          "shortIds": [
+            "45b6b57266629594"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    },
+    {
+      "protocol": "vless",
+      "tag": "eu-fin",
+      "settings": {
+        "vnext": [
+          {
+            "address": "150.251.152.174",
+            "port": 443,
+            "users": [
+              {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "wikipedia.org",
+          "publicKey": "W6j8y-6JHHAKoC_rHEX9ONUajPID_KPJ-hLUHhmBBV0",
+          "shortId": "45b6b57266629592",
+          "fingerprint": "qq"
+        }
+      }
+    },
+    {
+      "protocol": "vless",
+      "tag": "eu-ger",
+      "settings": {
+        "vnext": [
+          {
+            "address": "132.243.194.119",
+            "port": 443,
+            "users": [
+              {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "wikipedia.org",
+          "publicKey": "W6j8y-6JHHAKoC_rHEX9ONUajPID_KPJ-hLUHhmBBV0",
+          "shortId": "45b6b57266629592",
+          "fingerprint": "qq"
+        }
+      }
+    },
+    {
+      "protocol": "vless",
+      "tag": "eu-nl",
+      "settings": {
+        "vnext": [
+          {
+            "address": "194.50.94.177",
+            "port": 443,
+            "users": [
+              {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "encryption": "none",
+                "flow": "xtls-rprx-vision"
+              }
+            ]
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "yahoo.com",
+          "publicKey": "W6j8y-6JHHAKoC_rHEX9ONUajPID_KPJ-hLUHhmBBV0",
+          "shortId": "45b6b57266629592",
+          "fingerprint": "qq"
+        }
+      }
+    }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "balancers": [
+      {
+        "tag": "eu-balancer",
+        "selector": [
+          "eu-"
+        ],
+        "strategy": {
+          "type": "leastPing"
+        }
+      }
+    ],
+    "rules": [
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "port": "6667,6668,6669,6697,7000,7001,194",
+        "network": "tcp"
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "protocol": [
+          "bittorrent"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "block",
+        "port": "25,465,587,2525",
+        "network": "tcp"
+      },
+      {
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api",
+        "type": "field"
+      },
+      {
+        "inboundTag": [
+          "vless-ru-clean"
+        ],
+        "outboundTag": "direct",
+        "type": "field"
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "domain": [
+          "domain:ru",
+          "domain:su",
+          "domain:\u0440\u0444",
+          "domain:vk.com",
+          "domain:yandex.ru",
+          "domain:ya.ru",
+          "domain:mail.ru",
+          "domain:sberbank.ru",
+          "domain:gosuslugi.ru"
+        ]
+      },
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "ip": [
+          "geoip:ru",
+          "geoip:private"
+        ]
+      },
+      {
+        "type": "field",
+        "balancerTag": "eu-balancer",
+        "network": "tcp,udp"
+      }
+    ]
+  },
+  "stats": {}
+}

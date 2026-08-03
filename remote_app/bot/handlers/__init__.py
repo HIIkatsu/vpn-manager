@@ -1,0 +1,17 @@
+from aiogram import Router
+
+from app.bot.handlers.profile import router as profile_router
+from app.bot.handlers.start import router as start_router
+from app.bot.handlers.subscription import router as subscription_router
+from app.bot.handlers.utility import router as utility_router
+from app.bot.handlers.ai_support import router as ai_support_router
+
+router = Router()
+router.include_router(start_router)
+router.include_router(profile_router)
+router.include_router(subscription_router)
+
+router.include_router(utility_router)
+
+# AI support handler must be last to act as fallback for all text messages
+router.include_router(ai_support_router)

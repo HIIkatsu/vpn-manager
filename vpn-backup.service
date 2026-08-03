@@ -1,0 +1,6 @@
+[Unit]
+Description=VPN Manager V2 daily backup
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /root/vpn-manager-v2/scripts/backup.sh
